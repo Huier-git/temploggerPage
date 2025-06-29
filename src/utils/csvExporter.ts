@@ -16,6 +16,7 @@ export interface ExportData {
         timestamp: string;
         action: 'pause' | 'resume';
         duration?: number; // pause duration in seconds
+        reason?: string; // reason for pause/resume
       }>;
       totalActiveDuration: number; // total active recording time in seconds
       totalPauseDuration: number; // total pause time in seconds
@@ -23,17 +24,22 @@ export interface ExportData {
   };
 }
 
-// Detect pause/resume events in the data
-function detectPauseResumeEvents(readings: TemperatureReading[], recordingInterval: number): {
+// Process session events to generate accurate pause/resume information
+function processSessionEvents(sessionEvents: Array<{
+  timestamp: number;
+  action: 'start' | 'pause' | 'resume' | 'stop';
+  reason: string;
+}>): {
   pauseResumeEvents: Array<{
     timestamp: string;
     action: 'pause' | 'resume';
     duration?: number;
+    reason?: string;
   }>;
   totalActiveDuration: number;
   totalPauseDuration: number;
 } {
-  if (readings.length < 2) {
+  if (sessionEvents.length === 0) {
     return {
       pauseResumeEvents: [],
       totalActiveDuration: 0,
@@ -41,45 +47,74 @@ function detectPauseResumeEvents(readings: TemperatureReading[], recordingInterv
     };
   }
 
-  const sortedReadings = readings.sort((a, b) => a.timestamp - b.timestamp);
   const events: Array<{
     timestamp: string;
     action: 'pause' | 'resume';
     duration?: number;
+    reason?: string;
   }> = [];
   
+  let totalActiveDuration = 0;
   let totalPauseDuration = 0;
-  const expectedInterval = recordingInterval * 1000; // Convert to milliseconds
-  const pauseThreshold = expectedInterval * 3; // Consider a gap > 3x interval as a pause
-  
-  for (let i = 1; i < sortedReadings.length; i++) {
-    const currentReading = sortedReadings[i];
-    const previousReading = sortedReadings[i - 1];
-    const gap = currentReading.timestamp - previousReading.timestamp;
-    
-    if (gap > pauseThreshold) {
-      // Detected a pause
-      const pauseDuration = Math.round(gap / 1000); // Convert to seconds
-      totalPauseDuration += pauseDuration;
-      
-      // Add pause event
-      events.push({
-        timestamp: new Date(previousReading.timestamp).toISOString(),
-        action: 'pause',
-        duration: pauseDuration
-      });
-      
-      // Add resume event
-      events.push({
-        timestamp: new Date(currentReading.timestamp).toISOString(),
-        action: 'resume'
-      });
+  let lastActiveStart = 0;
+  let lastPauseStart = 0;
+
+  for (let i = 0; i < sessionEvents.length; i++) {
+    const event = sessionEvents[i];
+    const nextEvent = sessionEvents[i + 1];
+
+    switch (event.action) {
+      case 'start':
+      case 'resume':
+        lastActiveStart = event.timestamp;
+        if (event.action === 'resume') {
+          // Calculate pause duration
+          if (lastPauseStart > 0) {
+            const pauseDuration = Math.round((event.timestamp - lastPauseStart) / 1000);
+            totalPauseDuration += pauseDuration;
+            
+            // Update the last pause event with duration
+            const lastPauseEvent = events[events.length - 1];
+            if (lastPauseEvent && lastPauseEvent.action === 'pause') {
+              lastPauseEvent.duration = pauseDuration;
+            }
+          }
+          
+          events.push({
+            timestamp: new Date(event.timestamp).toISOString(),
+            action: 'resume',
+            reason: event.reason
+          });
+        }
+        break;
+
+      case 'pause':
+      case 'stop':
+        if (lastActiveStart > 0) {
+          const activeDuration = Math.round((event.timestamp - lastActiveStart) / 1000);
+          totalActiveDuration += activeDuration;
+        }
+        
+        if (event.action === 'pause') {
+          lastPauseStart = event.timestamp;
+          events.push({
+            timestamp: new Date(event.timestamp).toISOString(),
+            action: 'pause',
+            reason: event.reason
+          });
+        }
+        break;
     }
   }
-  
-  const totalDuration = (sortedReadings[sortedReadings.length - 1].timestamp - sortedReadings[0].timestamp) / 1000;
-  const totalActiveDuration = totalDuration - totalPauseDuration;
-  
+
+  // Handle case where session is still active
+  const lastEvent = sessionEvents[sessionEvents.length - 1];
+  if (lastEvent.action === 'start' || lastEvent.action === 'resume') {
+    const now = Date.now();
+    const activeDuration = Math.round((now - lastEvent.timestamp) / 1000);
+    totalActiveDuration += activeDuration;
+  }
+
   return {
     pauseResumeEvents: events,
     totalActiveDuration: Math.max(0, totalActiveDuration),
@@ -117,17 +152,28 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
     csvContent += `# Total Pause Duration: ${Math.round(metadata.sessionInfo.totalPauseDuration)} seconds\n`;
     csvContent += `# Number of Pause/Resume Events: ${metadata.sessionInfo.pauseResumeEvents.length}\n`;
     csvContent += '#\n';
-    csvContent += '# Pause/Resume Events:\n';
+    csvContent += '# Pause/Resume Events (User Actions Only):\n';
     
     metadata.sessionInfo.pauseResumeEvents.forEach((event, index) => {
       if (event.action === 'pause') {
-        csvContent += `# ${index + 1}. Paused at: ${event.timestamp} (Duration: ${event.duration} seconds)\n`;
+        csvContent += `# ${index + 1}. Paused at: ${event.timestamp}`;
+        if (event.duration) {
+          csvContent += ` (Duration: ${event.duration} seconds)`;
+        }
+        if (event.reason) {
+          csvContent += ` - Reason: ${event.reason}`;
+        }
+        csvContent += '\n';
       } else {
-        csvContent += `# ${index + 1}. Resumed at: ${event.timestamp}\n`;
+        csvContent += `# ${index + 1}. Resumed at: ${event.timestamp}`;
+        if (event.reason) {
+          csvContent += ` - Reason: ${event.reason}`;
+        }
+        csvContent += '\n';
       }
     });
   } else {
-    csvContent += '# Session Information: Continuous recording (no pauses detected)\n';
+    csvContent += '# Session Information: Continuous recording (no user-initiated pauses)\n';
   }
   
   csvContent += '#\n';
@@ -159,7 +205,8 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   
   // Add session info to filename if there were pauses
   if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
-    filename += `_${metadata.sessionInfo.pauseResumeEvents.length / 2}pauses`;
+    const pauseCount = metadata.sessionInfo.pauseResumeEvents.filter(e => e.action === 'pause').length;
+    filename += `_${pauseCount}pauses`;
   }
   
   filename += '.csv';
@@ -184,10 +231,15 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
 export function prepareExportData(
   readings: TemperatureReading[],
   serialConfig: SerialConfig,
-  recordingConfig: RecordingConfig
+  recordingConfig: RecordingConfig,
+  sessionEvents: Array<{
+    timestamp: number;
+    action: 'start' | 'pause' | 'resume' | 'stop';
+    reason: string;
+  }> = []
 ): ExportData {
   const sortedReadings = readings.sort((a, b) => a.timestamp - b.timestamp);
-  const sessionInfo = detectPauseResumeEvents(sortedReadings, recordingConfig.interval);
+  const sessionInfo = processSessionEvents(sessionEvents);
   
   return {
     readings: sortedReadings,

@@ -35,9 +35,10 @@ export function convertRawToTemperature(rawValue: number, conversionConfig?: { m
 
 /**
  * Validate temperature reading within reasonable bounds
+ * 移除温度范围限制，允许所有数值
  */
 export function isValidTemperature(temperature: number): boolean {
-  return temperature >= -273.15 && temperature <= 1000; // Reasonable bounds
+  return !isNaN(temperature) && isFinite(temperature); // 只检查是否为有效数字
 }
 
 /**

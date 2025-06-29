@@ -30,10 +30,11 @@ export function useDataStorage() {
         const currentData = JSON.parse(localStorage.getItem('currentReadings') || '[]');
         const currentSerialConfig = JSON.parse(localStorage.getItem('currentSerialConfig') || '{}');
         const currentRecordingConfig = JSON.parse(localStorage.getItem('currentRecordingConfig') || '{}');
+        const currentSessionEvents = JSON.parse(localStorage.getItem('currentSessionEvents') || '[]');
         
         if (currentData.length > 0) {
           // 自动导出CSV
-          const exportData = prepareExportData(currentData, currentSerialConfig, currentRecordingConfig);
+          const exportData = prepareExportData(currentData, currentSerialConfig, currentRecordingConfig, currentSessionEvents);
           exportToCSV(exportData, '自动导出_');
           
           // 更新配置状态
@@ -85,8 +86,17 @@ export function useDataStorage() {
     return filename;
   }, []);
 
-  // 修改：保存功能改为直接导出CSV
-  const saveData = useCallback((readings: TemperatureReading[], serialConfig?: SerialConfig, recordingConfig?: RecordingConfig) => {
+  // 修改：保存功能改为直接导出CSV，支持会话事件
+  const saveData = useCallback((
+    readings: TemperatureReading[], 
+    serialConfig?: SerialConfig, 
+    recordingConfig?: RecordingConfig,
+    sessionEvents?: Array<{
+      timestamp: number;
+      action: 'start' | 'pause' | 'resume' | 'stop';
+      reason: string;
+    }>
+  ) => {
     // 验证数据完整性
     if (!readings || readings.length === 0) {
       console.warn('没有数据需要导出');
@@ -113,8 +123,8 @@ export function useDataStorage() {
     }
 
     try {
-      // 直接导出为CSV文件
-      const exportData = prepareExportData(validReadings, serialConfig, recordingConfig);
+      // 直接导出为CSV文件，包含会话事件信息
+      const exportData = prepareExportData(validReadings, serialConfig, recordingConfig, sessionEvents || []);
       exportToCSV(exportData);
       
       // 保存当前配置供自动导出使用
@@ -123,6 +133,9 @@ export function useDataStorage() {
       }
       if (recordingConfig) {
         localStorage.setItem('currentRecordingConfig', JSON.stringify(recordingConfig));
+      }
+      if (sessionEvents) {
+        localStorage.setItem('currentSessionEvents', JSON.stringify(sessionEvents));
       }
       localStorage.setItem('currentReadings', JSON.stringify(validReadings));
       
@@ -251,10 +264,9 @@ export function useDataStorage() {
               ];
             }
             
-            // 验证数据有效性
+            // 验证数据有效性 - 移除温度范围限制
             if (isNaN(timestamp) || isNaN(channel) || isNaN(temperature) ||
-                channel < 1 || channel > 16 || 
-                temperature < -273.15 || temperature > 1000) {
+                channel < 1 || channel > 16) {
               invalidCount++;
               continue;
             }
@@ -288,13 +300,14 @@ export function useDataStorage() {
     });
   }, []);
 
-  // 清理数据功能 - 更新本地存储使用量
+  // 清理数据功能
   const clearSavedData = useCallback(() => {
     try {
       localStorage.removeItem('temperatureData');
       localStorage.removeItem('currentReadings');
       localStorage.removeItem('currentSerialConfig');
       localStorage.removeItem('currentRecordingConfig');
+      localStorage.removeItem('currentSessionEvents');
       setConfig(prev => ({
         ...prev,
         totalSavedReadings: 0,

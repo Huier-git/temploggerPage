@@ -102,6 +102,16 @@ return registerValue * 0.1;`,
   // 新增：会话状态管理
   const [sessionActive, setSessionActive] = useState(false);
 
+  // 新增：本地存储使用量状态
+  const [localStorageUsage, setLocalStorageUsage] = useState('0 KB');
+
+  // 新增：记录会话状态变化，用于准确的暂停/恢复检测
+  const [sessionEvents, setSessionEvents] = useState<Array<{
+    timestamp: number;
+    action: 'start' | 'pause' | 'resume' | 'stop';
+    reason: string;
+  }>>([]);
+
   const { readings, isReading, replaceReadings, clearReadings } = useTemperatureData(
     serialConfig, 
     recordingConfig, 
@@ -175,6 +185,90 @@ return registerValue * 0.1;`,
     }));
   }, [serialConfig.registerCount, sessionActive]);
 
+  // 实时计算本地存储使用量
+  const calculateLocalStorageUsage = () => {
+    try {
+      let totalSize = 0;
+      for (let key in localStorage) {
+        if (localStorage.hasOwnProperty(key)) {
+          totalSize += localStorage[key].length;
+        }
+      }
+      
+      const sizeInMB = (totalSize / 1024 / 1024).toFixed(2);
+      const sizeInKB = (totalSize / 1024).toFixed(0);
+      
+      return totalSize > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
+    } catch (error) {
+      return t('unknown');
+    }
+  };
+
+  // 监听本地存储变化并更新使用量
+  useEffect(() => {
+    const updateStorageUsage = () => {
+      setLocalStorageUsage(calculateLocalStorageUsage());
+    };
+
+    // 初始计算
+    updateStorageUsage();
+
+    // 监听存储变化事件
+    const handleStorageChange = () => {
+      updateStorageUsage();
+    };
+
+    // 监听自定义存储事件
+    window.addEventListener('storage', handleStorageChange);
+    
+    // 定期更新（每5秒）以确保实时性
+    const interval = setInterval(updateStorageUsage, 5000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [t]);
+
+  // 当数据变化时触发存储使用量更新
+  useEffect(() => {
+    setLocalStorageUsage(calculateLocalStorageUsage());
+    // 触发存储事件以通知其他组件
+    window.dispatchEvent(new Event('storage'));
+  }, [readings.length]);
+
+  // 监听录制状态变化，记录会话事件
+  useEffect(() => {
+    const now = Date.now();
+    
+    if (recordingConfig.isRecording) {
+      // 开始或恢复录制
+      const lastEvent = sessionEvents[sessionEvents.length - 1];
+      if (!lastEvent || lastEvent.action === 'stop' || lastEvent.action === 'pause') {
+        const action = lastEvent?.action === 'pause' ? 'resume' : 'start';
+        const reason = testModeConfig.enabled ? 'Test mode started' : 'Recording started';
+        
+        setSessionEvents(prev => [...prev, {
+          timestamp: now,
+          action,
+          reason
+        }]);
+      }
+    } else {
+      // 停止或暂停录制
+      const lastEvent = sessionEvents[sessionEvents.length - 1];
+      if (lastEvent && (lastEvent.action === 'start' || lastEvent.action === 'resume')) {
+        const reason = testModeConfig.enabled ? 'Test mode paused' : 'Recording paused';
+        
+        setSessionEvents(prev => [...prev, {
+          timestamp: now,
+          action: 'pause',
+          reason
+        }]);
+      }
+    }
+  }, [recordingConfig.isRecording, testModeConfig.enabled]);
+
   // 计算采样时间间隔
   const getSamplingInfo = () => {
     const frequency = (1 / recordingConfig.interval).toFixed(1);
@@ -186,23 +280,6 @@ return registerValue * 0.1;`,
         ? `${(intervalMs / 1000).toFixed(1)}s` 
         : `${intervalMs}ms`
     };
-  };
-
-  // 计算本地存储使用量
-  const getLocalStorageUsage = () => {
-    try {
-      let totalSize = 0;
-      for (let key in localStorage) {
-        if (localStorage.hasOwnProperty(key)) {
-          totalSize += localStorage[key].length;
-        }
-      }
-      
-      const sizeInMB = (totalSize / 1024 / 1024).toFixed(2);
-      return `${sizeInMB} MB`;
-    } catch (error) {
-      return t('unknown');
-    }
   };
 
   const handleConnect = () => {
@@ -241,7 +318,7 @@ return registerValue * 0.1;`,
   };
 
   const handleManualSave = () => {
-    const success = saveData(readings, serialConfig, recordingConfig);
+    const success = saveData(readings, serialConfig, recordingConfig, sessionEvents);
     if (success) {
       alert(t('exportSuccess') + ` ${readings.length} ${t('records')}`);
     } else {
@@ -253,6 +330,8 @@ return registerValue * 0.1;`,
     try {
       const importedReadings = await importFromCSV(file);
       replaceReadings(importedReadings);
+      // 清空会话事件，因为导入的是新数据
+      setSessionEvents([]);
       alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
     } catch (error) {
       alert(t('importFailed') + ': ' + (error as Error).message);
@@ -287,6 +366,38 @@ return registerValue * 0.1;`,
       ...prev,
       enabled: false
     }));
+
+    // 清空会话事件并记录新会话开始
+    setSessionEvents([{
+      timestamp: Date.now(),
+      action: 'start',
+      reason: 'New session started'
+    }]);
+  };
+
+  // 清理当前数据（不影响会话状态）
+  const handleClearCurrentData = () => {
+    if (recordingConfig.isRecording || testModeConfig.enabled) {
+      alert(language.current === 'zh' 
+        ? '请先停止数据采集再清理当前数据' 
+        : 'Please stop data collection before clearing current data'
+      );
+      return;
+    }
+
+    if (confirm(language.current === 'zh' 
+      ? '确定要清理当前会话的所有数据吗？此操作不可撤销。' 
+      : 'Are you sure you want to clear all data in current session? This operation cannot be undone.'
+    )) {
+      clearReadings();
+      // 记录数据清理事件
+      setSessionEvents(prev => [...prev, {
+        timestamp: Date.now(),
+        action: 'stop',
+        reason: 'Current data cleared'
+      }]);
+      alert(language.current === 'zh' ? '当前数据已清理' : 'Current data cleared');
+    }
   };
 
   // 测试模式启动确认
@@ -320,8 +431,9 @@ return registerValue * 0.1;`,
     if (storageConfig.autoSaveEnabled && readings.length > 0) {
       // 更新当前数据引用供自动保存使用
       localStorage.setItem('currentReadings', JSON.stringify(readings));
+      localStorage.setItem('currentSessionEvents', JSON.stringify(sessionEvents));
     }
-  }, [readings, storageConfig.autoSaveEnabled]);
+  }, [readings, storageConfig.autoSaveEnabled, sessionEvents]);
 
   // 更新最后成功读取时间
   useEffect(() => {
@@ -334,7 +446,6 @@ return registerValue * 0.1;`,
   }, [readings]);
 
   const samplingInfo = getSamplingInfo();
-  const localStorageUsage = getLocalStorageUsage();
 
   // 主题类名
   const themeClasses = isDarkMode 
@@ -467,12 +578,23 @@ return registerValue * 0.1;`,
                   </div>
                 </div>
                 
-                <button
-                  onClick={handleStartNewSession}
-                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
-                >
-                  {t('newSession')}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleClearCurrentData}
+                    disabled={recordingConfig.isRecording || testModeConfig.enabled}
+                    className="px-3 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors text-sm"
+                    title={language.current === 'zh' ? '清理当前数据' : 'Clear Current Data'}
+                  >
+                    {language.current === 'zh' ? '清理数据' : 'Clear Data'}
+                  </button>
+                  
+                  <button
+                    onClick={handleStartNewSession}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    {t('newSession')}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
