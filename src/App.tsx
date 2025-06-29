@@ -12,14 +12,7 @@ import { useTemperatureData } from './hooks/useTemperatureData';
 import { useDataStorage } from './hooks/useDataStorage';
 import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig } from './types';
 import { useTranslation } from './utils/i18n';
-
-// Default channel colors
-const CHANNEL_COLORS = [
-  '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
-  '#22C55E', '#10B981', '#14B8A6', '#06B6D4', '#0EA5E9',
-  '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#D946EF',
-  '#EC4899'
-];
+import { generateDynamicColors } from './utils/colorGenerator';
 
 function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -88,16 +81,23 @@ return registerValue * 0.1;`,
     testValue: 250
   });
 
-  const [channels, setChannels] = useState<ChannelConfig[]>(() =>
-    Array.from({ length: 16 }, (_, i) => ({
+  // 动态生成通道颜色
+  const [channels, setChannels] = useState<ChannelConfig[]>(() => {
+    const colorScheme = generateDynamicColors(16, {
+      scheme: 'optimized',
+      saturationRange: [70, 90],
+      lightnessRange: [50, 75]
+    });
+    
+    return Array.from({ length: 16 }, (_, i) => ({
       id: i + 1,
       name: language.current === 'zh' ? `传感器 ${i + 1}` : `Sensor ${i + 1}`,
-      color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+      color: colorScheme.colors[i].hex,
       enabled: i < 10, // 前10个通道默认启用
       minRange: 0,
       maxRange: 100
-    }))
-  );
+    }));
+  });
 
   // 新增：会话状态管理
   const [sessionActive, setSessionActive] = useState(false);
@@ -167,16 +167,27 @@ return registerValue * 0.1;`,
     setSessionActive(isActive);
   }, [readings.length, recordingConfig.isRecording, testModeConfig.enabled, connectionStatus.isConnected]);
 
-  // 根据寄存器数量更新通道配置 - 只在会话未活跃时允许
+  // 根据寄存器数量更新通道配置和颜色 - 只在会话未活跃时允许
   useEffect(() => {
     if (sessionActive) return; // 会话活跃时不允许修改
     
     const newChannelCount = Math.min(16, Math.max(1, serialConfig.registerCount));
+    
+    // 重新生成颜色方案
+    const colorScheme = generateDynamicColors(newChannelCount, {
+      scheme: 'optimized',
+      saturationRange: [70, 90],
+      lightnessRange: [50, 75]
+    });
+    
     setChannels(prev => {
       const updated = [...prev];
-      // 启用前N个通道，禁用其余通道
+      // 启用前N个通道，禁用其余通道，并更新颜色
       for (let i = 0; i < 16; i++) {
         updated[i].enabled = i < newChannelCount;
+        if (i < newChannelCount) {
+          updated[i].color = colorScheme.colors[i].hex;
+        }
       }
       return updated;
     });
