@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { TestTube, Play, Pause, Settings, AlertTriangle } from 'lucide-react';
 import { TestModeConfig } from '../types';
+import { useTranslation } from '../utils/i18n';
 
 interface TestModeControlsProps {
   config: TestModeConfig;
   onConfigChange: (config: TestModeConfig) => void;
+  language: 'zh' | 'en';
 }
 
-export default function TestModeControls({ config, onConfigChange }: TestModeControlsProps) {
+export default function TestModeControls({ config, onConfigChange, language }: TestModeControlsProps) {
+  const { t } = useTranslation(language);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -15,19 +18,31 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
     const errors: string[] = [];
     
     if (newConfig.temperatureRange.min >= newConfig.temperatureRange.max) {
-      errors.push('Minimum temperature must be less than maximum temperature');
+      errors.push(language === 'zh' 
+        ? '最低温度必须小于最高温度' 
+        : 'Minimum temperature must be less than maximum temperature'
+      );
     }
     
     if (newConfig.temperatureRange.min < -50 || newConfig.temperatureRange.max > 200) {
-      errors.push('Temperature range should be between -50°C and 200°C');
+      errors.push(language === 'zh' 
+        ? '温度范围应在-50°C到200°C之间' 
+        : 'Temperature range should be between -50°C and 200°C'
+      );
     }
     
     if (newConfig.dataGenerationRate <= 0 || newConfig.dataGenerationRate > 10) {
-      errors.push('Data generation rate should be between 0.1 and 10 readings per second');
+      errors.push(language === 'zh' 
+        ? '数据生成频率应在0.1到10次/秒之间' 
+        : 'Data generation rate should be between 0.1 and 10 readings per second'
+      );
     }
     
     if (newConfig.noiseLevel < 0 || newConfig.noiseLevel > 1) {
-      errors.push('Noise level should be between 0% and 100%');
+      errors.push(language === 'zh' 
+        ? '噪声水平应在0%到100%之间' 
+        : 'Noise level should be between 0% and 100%'
+      );
     }
     
     return errors;
@@ -99,8 +114,8 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
             <TestTube className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">Test Mode</h2>
-            <p className="text-purple-200 text-xs">Simulated data generation for testing</p>
+            <h2 className="text-lg font-bold text-white">{t('testMode')}</h2>
+            <p className="text-purple-200 text-xs">{t('simulatedDataGeneration')}</p>
           </div>
         </div>
         
@@ -110,7 +125,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
               ? 'bg-green-900 text-green-300 border border-green-700'
               : 'bg-gray-700 text-gray-300 border border-gray-600'
           }`}>
-            {config.enabled ? 'Active' : 'Inactive'}
+            {config.enabled ? t('active') : t('inactive')}
           </div>
           
           <button
@@ -118,7 +133,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
             className="flex items-center gap-1 px-3 py-1 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm transition-colors"
           >
             <Settings className="w-3 h-3" />
-            {showAdvanced ? 'Hide' : 'Settings'}
+            {showAdvanced ? (language === 'zh' ? '隐藏' : 'Hide') : t('settings')}
           </button>
           
           <button
@@ -131,7 +146,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
             }`}
           >
             {config.enabled ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {config.enabled ? 'Stop' : 'Start'}
+            {config.enabled ? t('stop') : t('start')}
           </button>
         </div>
       </div>
@@ -141,7 +156,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
         <div className="mt-3 p-3 bg-red-900 border border-red-700 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span className="text-red-300 font-medium text-sm">Configuration Errors</span>
+            <span className="text-red-300 font-medium text-sm">{t('configurationErrors')}</span>
           </div>
           <ul className="text-red-300 text-xs space-y-1">
             {validationErrors.map((error, index) => (
@@ -156,7 +171,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-purple-600">
           <div>
             <label className="block text-xs font-medium text-purple-200 mb-1">
-              Generation Rate (Hz)
+              {t('generationRate')} (Hz)
             </label>
             <select
               value={config.dataGenerationRate}
@@ -173,7 +188,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
 
           <div>
             <label className="block text-xs font-medium text-purple-200 mb-1">
-              Min Temperature (°C)
+              {t('minTemperature')} (°C)
             </label>
             <input
               type="number"
@@ -188,7 +203,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
 
           <div>
             <label className="block text-xs font-medium text-purple-200 mb-1">
-              Max Temperature (°C)
+              {t('maxTemperature')} (°C)
             </label>
             <input
               type="number"
@@ -203,7 +218,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
 
           <div>
             <label className="block text-xs font-medium text-purple-200 mb-1">
-              Noise Level: {(config.noiseLevel * 100).toFixed(0)}%
+              {t('noiseLevel')}: {(config.noiseLevel * 100).toFixed(0)}%
             </label>
             <input
               type="range"
@@ -221,7 +236,7 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
               onClick={resetToDefaults}
               className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-sm transition-colors"
             >
-              Reset to Defaults
+              {t('resetToDefaults')}
             </button>
           </div>
         </div>
@@ -231,8 +246,8 @@ export default function TestModeControls({ config, onConfigChange }: TestModeCon
       {config.enabled && (
         <div className="mt-3 p-2 bg-purple-900 rounded-lg">
           <div className="text-purple-200 text-xs">
-            <span className="font-medium">Active Configuration:</span> {' '}
-            {config.dataGenerationRate} Hz, {config.temperatureRange.min}°C to {config.temperatureRange.max}°C, {(config.noiseLevel * 100).toFixed(0)}% noise
+            <span className="font-medium">{t('activeConfiguration')}:</span> {' '}
+            {config.dataGenerationRate} Hz, {config.temperatureRange.min}°C {language === 'zh' ? '到' : 'to'} {config.temperatureRange.max}°C, {(config.noiseLevel * 100).toFixed(0)}% {language === 'zh' ? '噪声' : 'noise'}
           </div>
         </div>
       )}

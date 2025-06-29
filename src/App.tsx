@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Thermometer, Wifi, WifiOff, Clock, Database, Sun, Moon } from 'lucide-react';
+import { Activity, Thermometer, Wifi, WifiOff, Clock, Database, Sun, Moon, Globe, AlertTriangle } from 'lucide-react';
 import SerialModbusConfiguration from './components/SerialModbusConfiguration';
 import ChannelGrid from './components/ChannelGrid';
 import TemperatureChart from './components/TemperatureChart';
@@ -10,12 +10,15 @@ import DrillVisualization from './components/DrillVisualization';
 import TemperatureConversionConfig from './components/TemperatureConversionConfig';
 import { useTemperatureData } from './hooks/useTemperatureData';
 import { useDataStorage } from './hooks/useDataStorage';
-import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType } from './types';
+import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig } from './types';
+import { useTranslation } from './utils/i18n';
 
 // Default channel colors
 const CHANNEL_COLORS = [
   '#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16',
-  '#22C55E', '#10B981', '#14B8A6', '#06B6D4', '#0EA5E9'
+  '#22C55E', '#10B981', '#14B8A6', '#06B6D4', '#0EA5E9',
+  '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#D946EF',
+  '#EC4899'
 ];
 
 function App() {
@@ -25,13 +28,22 @@ function App() {
     return saved ? saved === 'dark' : true; // 默认暗色模式
   });
   
+  const [language, setLanguage] = useState<LanguageConfig>(() => {
+    const saved = localStorage.getItem('language');
+    return { current: saved === 'en' ? 'en' : 'zh' }; // 默认中文
+  });
+  
+  const { t } = useTranslation(language.current);
+  
   const [serialConfig, setSerialConfig] = useState<SerialConfig>({
     port: 'COM1',
     baudRate: 9600,
     parity: 'none',
     stopBits: 1,
     dataBits: 8,
-    startRegister: 40001
+    startRegister: 0, // 默认改为0
+    registerCount: 10, // 新增：默认10个寄存器
+    offsetAddress: 40001 // 新增：用户可配置的偏移地址
   });
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
@@ -42,7 +54,7 @@ function App() {
 
   const [recordingConfig, setRecordingConfig] = useState<RecordingConfig>({
     interval: 1, // 默认1秒间隔 (1Hz)
-    selectedChannels: new Array(10).fill(true),
+    selectedChannels: new Array(16).fill(false).map((_, i) => i < 10), // 前10个通道默认启用
     isRecording: false
   });
 
@@ -64,12 +76,12 @@ function App() {
 
   const [temperatureConversionConfig, setTemperatureConversionConfig] = useState<TemperatureConversionConfigType>({
     mode: 'builtin',
-    customFormula: `// 自定义转换公式
-// registerValue: 原始寄存器值 (0-65535)
-// 返回: 温度值 (°C)
+    customFormula: `// Custom conversion formula
+// registerValue: Raw register value (0-65535)
+// Return: Temperature value (°C)
 
 if (registerValue > 32767) {
-  // 处理负温度 (二进制补码)
+  // Handle negative temperature (two's complement)
   return (registerValue - 65536) * 0.1;
 }
 return registerValue * 0.1;`,
@@ -77,15 +89,18 @@ return registerValue * 0.1;`,
   });
 
   const [channels, setChannels] = useState<ChannelConfig[]>(() =>
-    Array.from({ length: 10 }, (_, i) => ({
+    Array.from({ length: 16 }, (_, i) => ({
       id: i + 1,
-      name: `传感器 ${i + 1}`,
-      color: CHANNEL_COLORS[i],
-      enabled: true,
+      name: language.current === 'zh' ? `传感器 ${i + 1}` : `Sensor ${i + 1}`,
+      color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+      enabled: i < 10, // 前10个通道默认启用
       minRange: 0,
       maxRange: 100
     }))
   );
+
+  // 新增：会话状态管理
+  const [sessionActive, setSessionActive] = useState(false);
 
   const { readings, isReading, replaceReadings, clearReadings } = useTemperatureData(
     serialConfig, 
@@ -100,8 +115,22 @@ return registerValue * 0.1;`,
     setConfig: setStorageConfig,
     saveData,
     loadData,
-    importFromCSV
+    importFromCSV,
+    clearSavedData
   } = useDataStorage();
+
+  // 语言切换
+  const toggleLanguage = () => {
+    const newLang = language.current === 'zh' ? 'en' : 'zh';
+    setLanguage({ current: newLang });
+    localStorage.setItem('language', newLang);
+    
+    // 更新通道名称
+    setChannels(prev => prev.map(channel => ({
+      ...channel,
+      name: newLang === 'zh' ? `传感器 ${channel.id}` : `Sensor ${channel.id}`
+    })));
+  };
 
   // 主题切换
   const toggleTheme = () => {
@@ -118,6 +147,33 @@ return registerValue * 0.1;`,
 
     return () => clearInterval(timer);
   }, []);
+
+  // 检测会话是否活跃
+  useEffect(() => {
+    const isActive = readings.length > 0 || recordingConfig.isRecording || testModeConfig.enabled || connectionStatus.isConnected;
+    setSessionActive(isActive);
+  }, [readings.length, recordingConfig.isRecording, testModeConfig.enabled, connectionStatus.isConnected]);
+
+  // 根据寄存器数量更新通道配置 - 只在会话未活跃时允许
+  useEffect(() => {
+    if (sessionActive) return; // 会话活跃时不允许修改
+    
+    const newChannelCount = Math.min(16, Math.max(1, serialConfig.registerCount));
+    setChannels(prev => {
+      const updated = [...prev];
+      // 启用前N个通道，禁用其余通道
+      for (let i = 0; i < 16; i++) {
+        updated[i].enabled = i < newChannelCount;
+      }
+      return updated;
+    });
+    
+    // 更新录制配置中的通道选择
+    setRecordingConfig(prev => ({
+      ...prev,
+      selectedChannels: prev.selectedChannels.map((_, i) => i < newChannelCount)
+    }));
+  }, [serialConfig.registerCount, sessionActive]);
 
   // 计算采样时间间隔
   const getSamplingInfo = () => {
@@ -145,7 +201,7 @@ return registerValue * 0.1;`,
       const sizeInMB = (totalSize / 1024 / 1024).toFixed(2);
       return `${sizeInMB} MB`;
     } catch (error) {
-      return '未知';
+      return t('unknown');
     }
   };
 
@@ -172,6 +228,11 @@ return registerValue * 0.1;`,
   };
 
   const handleChannelToggle = (channelId: number) => {
+    // 检查通道是否在允许范围内
+    if (channelId > serialConfig.registerCount) {
+      return; // 超出寄存器数量的通道不允许切换
+    }
+    
     setChannels(prev => prev.map(channel =>
       channel.id === channelId
         ? { ...channel, enabled: !channel.enabled }
@@ -182,9 +243,9 @@ return registerValue * 0.1;`,
   const handleManualSave = () => {
     const success = saveData(readings, serialConfig, recordingConfig);
     if (success) {
-      alert(`成功导出 ${readings.length} 条数据记录为CSV文件`);
+      alert(t('exportSuccess') + ` ${readings.length} ${t('records')}`);
     } else {
-      alert('导出失败，请重试');
+      alert(t('exportFailed'));
     }
   };
 
@@ -192,9 +253,9 @@ return registerValue * 0.1;`,
     try {
       const importedReadings = await importFromCSV(file);
       replaceReadings(importedReadings);
-      alert(`成功导入 ${importedReadings.length} 条数据记录`);
+      alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
     } catch (error) {
-      alert('导入失败: ' + (error as Error).message);
+      alert(t('importFailed') + ': ' + (error as Error).message);
     }
   };
 
@@ -208,6 +269,50 @@ return registerValue * 0.1;`,
     }));
     // 清理当前数据引用
     localStorage.removeItem('currentReadings');
+    
+    // 重置连接状态
+    setConnectionStatus({
+      isConnected: false,
+      lastError: undefined,
+      lastSuccessfulRead: undefined
+    });
+    
+    // 停止录制和测试模式
+    setRecordingConfig(prev => ({
+      ...prev,
+      isRecording: false
+    }));
+    
+    setTestModeConfig(prev => ({
+      ...prev,
+      enabled: false
+    }));
+  };
+
+  // 测试模式启动确认
+  const handleTestModeToggle = (newConfig: TestModeConfig) => {
+    if (newConfig.enabled && !testModeConfig.enabled) {
+      // 启动测试模式时显示确认警告
+      const confirmMessage = language.current === 'zh' 
+        ? '确定要启动测试模式吗？测试模式将生成模拟数据，不会连接真实设备。'
+        : 'Are you sure you want to start test mode? Test mode will generate simulated data and will not connect to real devices.';
+      
+      if (confirm(confirmMessage)) {
+        setTestModeConfig(newConfig);
+      }
+    } else {
+      setTestModeConfig(newConfig);
+    }
+  };
+
+  // 清理保存的数据 - 使用 useDataStorage hook 的方法
+  const handleClearSavedData = () => {
+    const success = clearSavedData();
+    if (success) {
+      alert(t('dataCleared'));
+    } else {
+      alert(language.current === 'zh' ? '清理数据失败' : 'Failed to clear data');
+    }
   };
 
   // 自动保存功能 - 修复自动保存
@@ -254,27 +359,44 @@ return registerValue * 0.1;`,
             </div>
             <div>
               <h1 className={`text-3xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                钻具温度采集显示平台
+                {t('appTitle')}
               </h1>
               <p className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Drill String Temperature Monitoring System
+                {t('appSubtitle')}
               </p>
             </div>
           </div>
           
           <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4 lg:gap-6 w-full lg:w-auto">
-            {/* 主题切换按钮 */}
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-lg transition-colors ${
-                isDarkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' 
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-              }`}
-              title={isDarkMode ? '切换到日间模式' : '切换到夜间模式'}
-            >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
+            {/* 语言和主题切换按钮 */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleLanguage}
+                className={`flex items-center gap-2 p-2 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-blue-400' 
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                }`}
+                title={t('language')}
+              >
+                <Globe className="w-5 h-5" />
+                <span className="text-sm font-medium">
+                  {language.current === 'zh' ? '中' : 'EN'}
+                </span>
+              </button>
+              
+              <button
+                onClick={toggleTheme}
+                className={`p-2 rounded-lg transition-colors ${
+                  isDarkMode 
+                    ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' 
+                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                }`}
+                title={isDarkMode ? t('switchToDayMode') : t('switchToNightMode')}
+              >
+                {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+            </div>
 
             {/* 系统状态信息 - 自适应网格 */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm w-full lg:w-auto">
@@ -282,16 +404,16 @@ return registerValue * 0.1;`,
               <div className="text-left lg:text-right">
                 <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1`}>
                   <Clock className="w-4 h-4" />
-                  当前时间
+                  {t('currentTime')}
                 </div>
                 <div className={`${isDarkMode ? 'text-white' : 'text-gray-900'} font-mono text-sm lg:text-base`}>
-                  {currentTime.toLocaleTimeString('zh-CN')}
+                  {currentTime.toLocaleTimeString(language.current === 'zh' ? 'zh-CN' : 'en-US')}
                 </div>
               </div>
 
               {/* 采样设置 */}
               <div className="text-left lg:text-right">
-                <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>采样设置</div>
+                <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t('samplingSettings')}</div>
                 <div className="text-cyan-400 font-medium">
                   {samplingInfo.frequency} ({samplingInfo.interval})
                 </div>
@@ -305,12 +427,12 @@ return registerValue * 0.1;`,
                   ) : (
                     <WifiOff className="w-4 h-4 text-red-400" />
                   )}
-                  Modbus状态
+                  {t('modbusStatus')}
                 </div>
                 <div className={`font-medium ${
                   connectionStatus.isConnected ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  {connectionStatus.isConnected ? '已连接' : '未连接'}
+                  {connectionStatus.isConnected ? t('connected') : t('disconnected')}
                 </div>
               </div>
 
@@ -318,7 +440,7 @@ return registerValue * 0.1;`,
               <div className="text-left lg:text-right">
                 <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'} flex items-center gap-1 lg:justify-end`}>
                   <Database className="w-4 h-4" />
-                  本地存储
+                  {t('localStorage')}
                 </div>
                 <div className="text-purple-400 font-medium">
                   {localStorageUsage}
@@ -332,14 +454,14 @@ return registerValue * 0.1;`,
                 <div className="flex items-center gap-3 px-4 py-2 bg-green-900 rounded-lg border border-green-600">
                   <Activity className="w-5 h-5 animate-pulse text-green-400" />
                   <span className="text-green-300 font-medium">
-                    {testModeConfig.enabled ? '测试模式运行中' : '数据采集中'}
+                    {testModeConfig.enabled ? t('testModeRunning') : t('dataCollecting')}
                   </span>
                 </div>
               )}
               
               <div className="flex items-center gap-4">
                 <div className="text-left lg:text-right">
-                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>总数据点</div>
+                  <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t('totalDataPoints')}</div>
                   <div className="text-2xl font-bold text-cyan-400">
                     {readings.length > 0 ? readings.length.toLocaleString() : '--'}
                   </div>
@@ -349,12 +471,27 @@ return registerValue * 0.1;`,
                   onClick={handleStartNewSession}
                   className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
                 >
-                  新建会话
+                  {t('newSession')}
                 </button>
               </div>
             </div>
           </div>
         </div>
+        
+        {/* 会话状态提示 */}
+        {sessionActive && (
+          <div className="mt-4 p-3 bg-yellow-900 border border-yellow-700 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-yellow-400" />
+              <span className="text-yellow-300 font-medium">
+                {language.current === 'zh' 
+                  ? '会话活跃中 - 寄存器配置已锁定，如需修改请开启新会话'
+                  : 'Session Active - Register configuration locked, start new session to modify'
+                }
+              </span>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="p-6 space-y-6">
@@ -365,12 +502,14 @@ return registerValue * 0.1;`,
               readings={readings}
               displayConfig={displayConfig}
               channels={channels}
+              language={language.current}
             />
           </div>
           <div>
             <DrillVisualization
               readings={readings}
               channels={channels}
+              language={language.current}
             />
           </div>
         </div>
@@ -380,6 +519,8 @@ return registerValue * 0.1;`,
           readings={readings}
           channels={channels}
           onChannelToggle={handleChannelToggle}
+          language={language.current}
+          maxChannels={serialConfig.registerCount}
         />
 
         {/* 第三行：控制面板 */}
@@ -388,6 +529,7 @@ return registerValue * 0.1;`,
             config={displayConfig}
             onConfigChange={setDisplayConfig}
             onImportData={handleImportData}
+            language={language.current}
           />
           
           <div className="lg:col-span-2">
@@ -400,6 +542,8 @@ return registerValue * 0.1;`,
               onStorageConfigChange={setStorageConfig}
               onManualSave={handleManualSave}
               onImportData={handleImportData}
+              onClearSavedData={handleClearSavedData}
+              language={language.current}
             />
           </div>
         </div>
@@ -411,18 +555,22 @@ return registerValue * 0.1;`,
           onConfigChange={setSerialConfig}
           onConnect={handleConnect}
           onDisconnect={handleDisconnect}
+          language={language.current}
+          sessionActive={sessionActive}
         />
 
         {/* 第五行：温度转换配置 */}
         <TemperatureConversionConfig
           config={temperatureConversionConfig}
           onConfigChange={setTemperatureConversionConfig}
+          language={language.current}
         />
 
         {/* 第六行：测试模式 */}
         <TestModeControls
           config={testModeConfig}
-          onConfigChange={setTestModeConfig}
+          onConfigChange={handleTestModeToggle}
+          language={language.current}
         />
       </main>
 
@@ -432,7 +580,7 @@ return registerValue * 0.1;`,
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="text-center md:text-left">
               <div className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'} text-sm`}>
-                © 2024 Biomimetic and Intelligent Robotics Lab, Guangdong University of Technology. All rights reserved.
+                © 2025 Biomimetic and Intelligent Robotics Lab, Guangdong University of Technology. All rights reserved.
               </div>
               <div className={`${isDarkMode ? 'text-gray-400' : 'text-gray-500'} text-xs mt-1`}>
                 广东工业大学机电工程学院仿生与智能机器人实验室
@@ -451,7 +599,7 @@ return registerValue * 0.1;`,
           
           <div className={`mt-3 pt-3 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-300'}`}>
             <div className={`text-center ${isDarkMode ? 'text-gray-500' : 'text-gray-600'} text-xs`}>
-              Guangzhou 510006, China | 钻具温度采集显示平台 v1.0
+              Guangzhou 510006, China | {t('appTitle')} v1.0
             </div>
           </div>
         </div>

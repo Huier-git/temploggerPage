@@ -5,7 +5,9 @@ export interface SerialConfig {
   stopBits: 1 | 2;
   dataBits: 7 | 8;
   startRegister: number;
-  customRegisters?: number[]; // 新增：自定义寄存器地址数组
+  registerCount: number; // 新增：寄存器数量
+  offsetAddress: number; // 新增：用户可配置的偏移地址
+  customRegisters?: number[]; // 自定义寄存器地址数组
 }
 
 export interface TemperatureReading {
@@ -23,11 +25,11 @@ export interface RecordingConfig {
 
 export interface DisplayConfig {
   mode: 'full' | 'sliding';
-  viewMode: 'combined' | 'individual'; // 新增：综合视图或分析视图
+  viewMode: 'combined' | 'individual';
   timeWindow: number; // in minutes for sliding mode
   showGrid: boolean;
   showLegend: boolean;
-  relativeTime: boolean; // 新增：是否显示相对时间
+  relativeTime: boolean;
 }
 
 export interface ConnectionStatus {
@@ -70,14 +72,17 @@ export interface ChannelStatistics {
   readingCount: number;
 }
 
-// 新增：温度转换配置
 export interface TemperatureConversionConfig {
   mode: 'builtin' | 'custom';
   customFormula: string;
   testValue: number;
 }
 
-// 新增：拖拽布局配置
+// 新增：语言配置
+export interface LanguageConfig {
+  current: 'zh' | 'en';
+}
+
 export interface LayoutConfig {
   modules: ModuleLayout[];
   gridCols: number;
@@ -99,7 +104,6 @@ export interface ModuleLayout {
   isResizable?: boolean;
 }
 
-// 新增：Modbus RTU配置
 export interface ModbusRTUConfig {
   enabled: boolean;
   slaveId: number;
@@ -116,7 +120,6 @@ export interface ModbusFunctionCode {
   enabled: boolean;
 }
 
-// 新增：Modbus TCP配置
 export interface ModbusTCPConfig {
   enabled: boolean;
   mode: 'client' | 'server';
@@ -128,7 +131,6 @@ export interface ModbusTCPConfig {
   unitId: number;
 }
 
-// 新增：Modbus通信状态
 export interface ModbusStatus {
   rtu: {
     connected: boolean;
@@ -145,7 +147,6 @@ export interface ModbusStatus {
   };
 }
 
-// 新增：Modbus数据操作
 export interface ModbusOperation {
   id: string;
   type: 'read' | 'write';

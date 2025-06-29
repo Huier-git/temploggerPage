@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TemperatureReading, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
 import { Thermometer, Move, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { useTranslation } from '../utils/i18n';
 
 interface SensorPosition {
   channelId: number;
@@ -12,15 +13,22 @@ interface SensorPosition {
 interface DrillVisualizationProps {
   readings: TemperatureReading[];
   channels: ChannelConfig[];
+  language: 'zh' | 'en';
 }
 
-export default function DrillVisualization({ readings, channels }: DrillVisualizationProps) {
+export default function DrillVisualization({ readings, channels, language }: DrillVisualizationProps) {
+  const { t } = useTranslation(language);
+  
+  // 获取启用的通道数量
+  const enabledChannels = channels.filter(channel => channel.enabled);
+  const enabledChannelCount = enabledChannels.length;
+  
   const [sensorPositions, setSensorPositions] = useState<SensorPosition[]>(() =>
-    // Optimized sensor distribution: evenly spaced across drill string and bit
-    channels.map((channel, index) => {
+    // 根据启用的通道数量优化传感器分布
+    enabledChannels.map((channel, index) => {
       const totalRange = 90; // 5% to 95% = 90% space
-      const spacing = totalRange / (channels.length - 1);
-      const yPosition = 5 + (index * spacing);
+      const spacing = enabledChannelCount > 1 ? totalRange / (enabledChannelCount - 1) : 0;
+      const yPosition = enabledChannelCount === 1 ? 50 : 5 + (index * spacing);
       
       return {
         channelId: channel.id,
@@ -35,6 +43,32 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
   const [compactMode, setCompactMode] = useState(false);
   const drillRef = useRef<HTMLDivElement>(null);
 
+  // 当启用通道变化时，重新计算传感器位置
+  useEffect(() => {
+    const newEnabledChannels = channels.filter(channel => channel.enabled);
+    const newCount = newEnabledChannels.length;
+    
+    if (newCount !== enabledChannelCount) {
+      // 重新分布传感器位置
+      const newPositions = newEnabledChannels.map((channel, index) => {
+        const totalRange = 90;
+        const spacing = newCount > 1 ? totalRange / (newCount - 1) : 0;
+        const yPosition = newCount === 1 ? 50 : 5 + (index * spacing);
+        
+        // 保留已存在传感器的位置，新增的使用默认位置
+        const existingPosition = sensorPositions.find(pos => pos.channelId === channel.id);
+        
+        return existingPosition || {
+          channelId: channel.id,
+          x: 50,
+          y: Math.min(95, yPosition)
+        };
+      });
+      
+      setSensorPositions(newPositions);
+    }
+  }, [channels]);
+
   // Get latest temperature data
   const getLatestTemperature = (channelId: number): number | null => {
     const channelReadings = readings
@@ -46,7 +80,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
 
   // Calculate temperature range for color mapping
   const getTemperatureRange = () => {
-    const temperatures = channels
+    const temperatures = enabledChannels
       .map(channel => getLatestTemperature(channel.id))
       .filter(temp => temp !== null) as number[];
     
@@ -62,7 +96,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     };
   };
 
-  // Temperature to color mapping with improved gradient
+  // Enhanced temperature to color mapping with improved gradient
   const temperatureToColor = (temperature: number | null): string => {
     if (temperature === null) return '#6B7280';
     
@@ -116,7 +150,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     return inMainBody || inDrillBit;
   };
 
-  // Get intersecting temperatures for drill string coloring
+  // Enhanced temperature gradient calculation with horizontal temperature differences
   const getIntersectingTemperatures = () => {
     const intersectingTemps: Array<{ 
       y: number; 
@@ -127,7 +161,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     }> = [];
     
     sensorPositions.forEach(sensorPos => {
-      const channel = channels.find(ch => ch.id === sensorPos.channelId);
+      const channel = enabledChannels.find(ch => ch.id === sensorPos.channelId);
       if (!channel || !channel.enabled) return;
       
       if (isSensorIntersectingDrill(sensorPos)) {
@@ -149,6 +183,60 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     });
     
     return intersectingTemps.sort((a, b) => a.y - b.y);
+  };
+
+  // Enhanced gradient generation with horizontal temperature interpolation
+  const generateDrillGradient = (intersectingTemperatures: any[], gradientId: string) => {
+    if (intersectingTemperatures.length === 0) {
+      return (
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style={{stopColor:'#c0c0c0', stopOpacity: 0.3}}/>
+          <stop offset="100%" style={{stopColor:'#a0a0a0', stopOpacity: 0.3}}/>
+        </linearGradient>
+      );
+    }
+
+    // Sort by Y position and create interpolated gradient
+    const sortedTemps = [...intersectingTemperatures].sort((a, b) => a.y - b.y);
+    
+    // Create gradient stops with horizontal temperature consideration
+    const gradientStops = [];
+    
+    for (let i = 0; i < sortedTemps.length; i++) {
+      const temp = sortedTemps[i];
+      const offset = `${temp.y}%`;
+      
+      // Consider horizontal temperature differences for color blending
+      let blendedColor = temp.color;
+      
+      // If there are nearby sensors horizontally, blend their colors
+      const nearbyHorizontal = sortedTemps.filter(t => 
+        Math.abs(t.y - temp.y) < 10 && Math.abs(t.x - temp.x) > 5
+      );
+      
+      if (nearbyHorizontal.length > 0) {
+        // Blend colors based on horizontal temperature differences
+        const avgTemp = (temp.temperature + nearbyHorizontal.reduce((sum, t) => sum + t.temperature, 0)) / (nearbyHorizontal.length + 1);
+        blendedColor = temperatureToColor(avgTemp);
+      }
+      
+      gradientStops.push(
+        <stop 
+          key={i} 
+          offset={offset} 
+          style={{
+            stopColor: blendedColor, 
+            stopOpacity: temp.weight * 0.8
+          }}
+        />
+      );
+    }
+    
+    return (
+      <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+        {gradientStops}
+      </linearGradient>
+    );
   };
 
   // Handle sensor dragging
@@ -177,12 +265,15 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     setDraggedSensor(null);
   };
 
-  // Reset sensor positions to optimal distribution
+  // Reset sensor positions to optimal distribution based on current enabled channels
   const resetPositions = () => {
-    setSensorPositions(channels.map((channel, index) => {
+    const currentEnabledChannels = channels.filter(channel => channel.enabled);
+    const count = currentEnabledChannels.length;
+    
+    setSensorPositions(currentEnabledChannels.map((channel, index) => {
       const totalRange = 90;
-      const spacing = totalRange / (channels.length - 1);
-      const yPosition = 5 + (index * spacing);
+      const spacing = count > 1 ? totalRange / (count - 1) : 0;
+      const yPosition = count === 1 ? 50 : 5 + (index * spacing);
       
       return {
         channelId: channel.id,
@@ -237,23 +328,22 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
     };
   }, [draggedSensor]);
 
-  const enabledChannels = channels.filter(channel => channel.enabled);
   const intersectingTemperatures = getIntersectingTemperatures();
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-[600px] flex flex-col">
       {/* Compact header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Thermometer className="w-5 h-5 text-orange-400" />
-          <h3 className="text-lg font-bold text-white">钻具温度分布</h3>
+          <h3 className="text-lg font-bold text-white">{t('drillTemperatureDistribution')}</h3>
         </div>
         
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowTemperatureScale(!showTemperatureScale)}
             className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
-            title={showTemperatureScale ? '隐藏温度条' : '显示温度条'}
+            title={showTemperatureScale ? t('hideTemperatureScale') : t('showTemperatureScale')}
           >
             {showTemperatureScale ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
@@ -262,7 +352,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
             onClick={() => setCompactMode(!compactMode)}
             className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs transition-colors"
           >
-            {compactMode ? '详细' : '紧凑'}
+            {compactMode ? t('detailed') : t('compact')}
           </button>
           
           <button
@@ -270,8 +360,16 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
             className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors"
           >
             <RotateCcw className="w-3 h-3" />
-            重置
+            {t('reset')}
           </button>
+        </div>
+      </div>
+
+      {/* Instructions moved below title */}
+      <div className="mb-3 text-center">
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+          <Move className="w-3 h-3" />
+          <span>{t('dragToAdjustPosition')}</span>
         </div>
       </div>
 
@@ -309,48 +407,12 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
                     <stop offset="100%" style={{stopColor:'#333'}}/>
                   </linearGradient>
 
-                  {/* Dynamic temperature gradients */}
-                  <linearGradient id="temperatureGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    {intersectingTemperatures.length > 0 ? (
-                      intersectingTemperatures.map((temp, index) => (
-                        <stop 
-                          key={index} 
-                          offset={`${temp.y}%`} 
-                          style={{
-                            stopColor: temp.color, 
-                            stopOpacity: temp.weight * 0.8
-                          }}
-                        />
-                      ))
-                    ) : (
-                      <>
-                        <stop offset="0%" style={{stopColor:'#c0c0c0', stopOpacity: 0.3}}/>
-                        <stop offset="100%" style={{stopColor:'#a0a0a0', stopOpacity: 0.3}}/>
-                      </>
-                    )}
-                  </linearGradient>
-
-                  <linearGradient id="drillBitTemperatureGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    {intersectingTemperatures.filter(temp => temp.y >= 85).length > 0 ? (
-                      intersectingTemperatures
-                        .filter(temp => temp.y >= 85)
-                        .map((temp, index) => (
-                          <stop 
-                            key={index} 
-                            offset={`${((temp.y - 85) / (96.25 - 85)) * 100}%`} 
-                            style={{
-                              stopColor: temp.color, 
-                              stopOpacity: temp.weight * 0.8
-                            }}
-                          />
-                        ))
-                    ) : (
-                      <>
-                        <stop offset="0%" style={{stopColor:'#555', stopOpacity: 0.3}}/>
-                        <stop offset="100%" style={{stopColor:'#333', stopOpacity: 0.3}}/>
-                      </>
-                    )}
-                  </linearGradient>
+                  {/* Enhanced dynamic temperature gradients with horizontal consideration */}
+                  {generateDrillGradient(intersectingTemperatures, 'temperatureGradient')}
+                  {generateDrillGradient(
+                    intersectingTemperatures.filter(temp => temp.y >= 85), 
+                    'drillBitTemperatureGradient'
+                  )}
                 </defs>
                 
                 {/* Main drill body */}
@@ -359,7 +421,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
                       stroke="#666" 
                       strokeWidth="2"/>
                 
-                {/* Temperature overlay */}
+                {/* Enhanced temperature overlay */}
                 {intersectingTemperatures.length > 0 && (
                   <rect x="75" y="20" width="50" height="320" 
                         fill="url(#temperatureGradient)" 
@@ -394,7 +456,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
                       stroke="#333" 
                       strokeWidth="2"/>
                 
-                {/* Drill bit temperature overlay */}
+                {/* Enhanced drill bit temperature overlay */}
                 {intersectingTemperatures.filter(temp => temp.y >= 85).length > 0 && (
                   <rect x="65" y="340" width="70" height="20" 
                         fill="url(#drillBitTemperatureGradient)" 
@@ -420,7 +482,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
               
               {/* Sensor positions - optimized for touch */}
               {sensorPositions.map(sensorPos => {
-                const channel = channels.find(ch => ch.id === sensorPos.channelId);
+                const channel = enabledChannels.find(ch => ch.id === sensorPos.channelId);
                 if (!channel || !channel.enabled) return null;
                 
                 const temperature = getLatestTemperature(channel.id);
@@ -450,20 +512,12 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
                       e.preventDefault();
                       setDraggedSensor(sensorPos.channelId);
                     }}
-                    title={`传感器 ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : '无数据'}${isIntersecting ? ' (影响钻具颜色)' : ''}`}
+                    title={`${language === 'zh' ? '传感器' : 'Sensor'} ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : (language === 'zh' ? '无数据' : 'No Data')}${isIntersecting ? ` (${t('affectsDrillColor')})` : ''}`}
                   >
                     {channel.id}
                   </div>
                 );
               })}
-            </div>
-          </div>
-          
-          {/* Instructions - compact */}
-          <div className="mt-2 text-center">
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
-              <Move className="w-3 h-3" />
-              <span>拖拽调整位置 • 相交影响颜色</span>
             </div>
           </div>
         </div>
@@ -474,7 +528,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
           {showTemperatureScale && (
             <div className="bg-gray-700 rounded-lg p-3">
               <h4 className={`font-semibold text-white mb-2 text-center ${compactMode ? 'text-xs' : 'text-sm'}`}>
-                温度范围
+                {t('temperatureRange')}
               </h4>
               
               <div className="flex justify-center">
@@ -507,7 +561,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
               {/* Statistics */}
               <div className="text-center mt-2">
                 <div className={`text-gray-400 ${compactMode ? 'text-xs' : 'text-xs'}`}>
-                  影响: {intersectingTemperatures.length}/{enabledChannels.length}
+                  {t('affecting')}: {intersectingTemperatures.length}/{enabledChannels.length}
                 </div>
               </div>
             </div>
@@ -516,7 +570,7 @@ export default function DrillVisualization({ readings, channels }: DrillVisualiz
           {/* Sensor status - scrollable */}
           <div className="bg-gray-700 rounded-lg p-3 flex-1 min-h-0">
             <h4 className={`font-semibold text-white mb-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
-              传感器状态
+              {t('sensorStatus')}
             </h4>
             
             <div className="space-y-1 max-h-60 overflow-y-auto">

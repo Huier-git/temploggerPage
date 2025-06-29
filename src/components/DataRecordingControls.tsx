@@ -2,6 +2,7 @@ import React from 'react';
 import { Play, Pause, Download, Clock, Database, Save, Upload, FileText, BarChart, Trash2 } from 'lucide-react';
 import { RecordingConfig, TemperatureReading, SerialConfig, DataStorageConfig } from '../types';
 import { exportToCSV, prepareExportData } from '../utils/csvExporter';
+import { useTranslation } from '../utils/i18n';
 
 interface DataRecordingControlsProps {
   recordingConfig: RecordingConfig;
@@ -12,6 +13,8 @@ interface DataRecordingControlsProps {
   onStorageConfigChange: (config: DataStorageConfig) => void;
   onManualSave: () => void;
   onImportData: (file: File) => void;
+  onClearSavedData: () => void;
+  language: 'zh' | 'en';
 }
 
 export default function DataRecordingControls({
@@ -22,8 +25,11 @@ export default function DataRecordingControls({
   onRecordingConfigChange,
   onStorageConfigChange,
   onManualSave,
-  onImportData
+  onImportData,
+  onClearSavedData,
+  language
 }: DataRecordingControlsProps) {
+  const { t } = useTranslation(language);
   const [customFrequency, setCustomFrequency] = React.useState<string>('1.0');
 
   const handleToggleRecording = () => {
@@ -78,7 +84,7 @@ export default function DataRecordingControls({
   // 修改：手动保存直接下载CSV
   const handleManualSave = () => {
     if (readings.length === 0) {
-      alert('没有数据可以保存');
+      alert(t('noDataToSave'));
       return;
     }
 
@@ -93,10 +99,10 @@ export default function DataRecordingControls({
         lastAutoSave: Date.now()
       });
       
-      alert(`成功导出 ${readings.length} 条数据记录为CSV文件`);
+      alert(`${t('exportSuccess')} ${readings.length} ${t('records')}`);
     } catch (error) {
-      alert('导出失败，请重试');
-      console.error('导出错误:', error);
+      alert(t('exportFailed'));
+      console.error('Export error:', error);
     }
   };
 
@@ -105,21 +111,15 @@ export default function DataRecordingControls({
     handleManualSave();
   };
 
-  // 清理保存的数据
+  // 清理保存的数据 - 使用传入的 onClearSavedData 函数，只在停止记录时允许
   const handleClearSavedData = () => {
-    if (confirm('确定要清理所有本地数据吗？此操作不可撤销。')) {
-      try {
-        localStorage.removeItem('temperatureData');
-        localStorage.removeItem('currentReadings');
-        onStorageConfigChange({
-          ...storageConfig,
-          totalSavedReadings: 0,
-          lastAutoSave: undefined
-        });
-        alert('本地数据已清理');
-      } catch (error) {
-        alert('清理数据失败');
-      }
+    if (recordingConfig.isRecording) {
+      alert(language === 'zh' ? '请先停止数据记录再清理本地数据' : 'Please stop data recording before clearing local data');
+      return;
+    }
+    
+    if (confirm(t('confirmClearData'))) {
+      onClearSavedData();
     }
   };
 
@@ -136,13 +136,13 @@ export default function DataRecordingControls({
           const file = new File([blob], 'saved_data.csv', { type: 'text/csv' });
           onImportData(file);
         } else {
-          alert('保存的数据格式无效');
+          alert(language === 'zh' ? '保存的数据格式无效' : 'Invalid saved data format');
         }
       } else {
-        alert('没有找到保存的数据');
+        alert(language === 'zh' ? '没有找到保存的数据' : 'No saved data found');
       }
     } catch (error) {
-      alert('加载保存的数据失败');
+      alert(language === 'zh' ? '加载保存的数据失败' : 'Failed to load saved data');
     }
   };
 
@@ -161,8 +161,8 @@ export default function DataRecordingControls({
     Math.round((readings[readings.length - 1]?.timestamp - readings[0]?.timestamp) / 1000 / 60) : 0;
 
   const formatLastSaveTime = () => {
-    if (!storageConfig.lastAutoSave) return '从未导出';
-    return new Date(storageConfig.lastAutoSave).toLocaleString('zh-CN');
+    if (!storageConfig.lastAutoSave) return t('neverExported');
+    return new Date(storageConfig.lastAutoSave).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US');
   };
 
   // 获取保存的数据统计
@@ -173,16 +173,16 @@ export default function DataRecordingControls({
         const data = JSON.parse(saved);
         return {
           count: data.readings?.length || 0,
-          saveTime: data.timestamp ? new Date(data.timestamp).toLocaleString('zh-CN') : '未知'
+          saveTime: data.timestamp ? new Date(data.timestamp).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') : t('unknown')
         };
       }
     } catch (error) {
-      console.error('获取保存数据统计失败:', error);
+      console.error('Failed to get saved data stats:', error);
     }
-    return { count: 0, saveTime: '无' };
+    return { count: 0, saveTime: t('none') };
   };
 
-  // 计算本地存储使用量
+  // 计算本地存储使用量 - 实时更新
   const getLocalStorageUsage = () => {
     try {
       let totalSize = 0;
@@ -197,7 +197,7 @@ export default function DataRecordingControls({
       
       return totalSize > 1024 * 1024 ? `${sizeInMB} MB` : `${sizeInKB} KB`;
     } catch (error) {
-      return '未知';
+      return t('unknown');
     }
   };
 
@@ -216,7 +216,7 @@ export default function DataRecordingControls({
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Database className="w-5 h-5 text-purple-400" />
-          <h2 className="text-xl font-semibold text-white">数据记录与存储</h2>
+          <h2 className="text-xl font-semibold text-white">{t('dataRecordingAndStorage')}</h2>
         </div>
         
         <div className="flex items-center gap-3">
@@ -225,7 +225,7 @@ export default function DataRecordingControls({
               ? 'bg-green-900 text-green-300 border border-green-700'
               : 'bg-gray-700 text-gray-300 border border-gray-600'
           }`}>
-            {recordingConfig.isRecording ? '记录中' : '已停止'}
+            {recordingConfig.isRecording ? t('recording') : t('stopped')}
           </div>
           
           <button
@@ -237,7 +237,7 @@ export default function DataRecordingControls({
             }`}
           >
             {recordingConfig.isRecording ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {recordingConfig.isRecording ? '停止' : '开始'}
+            {recordingConfig.isRecording ? t('stop') : t('start')}
           </button>
         </div>
       </div>
@@ -247,50 +247,50 @@ export default function DataRecordingControls({
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <BarChart className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-gray-300">当前数据</span>
+            <span className="text-sm font-medium text-gray-300">{t('currentData')}</span>
           </div>
           <div className="text-2xl font-bold text-white">
             {displayCurrentData}
           </div>
           <div className="text-xs text-gray-400">
-            {totalReadings > 0 ? '条记录' : '无数据'}
+            {totalReadings > 0 ? t('records') : t('noSession')}
           </div>
         </div>
 
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-green-400" />
-            <span className="text-sm font-medium text-gray-300">记录时长</span>
+            <span className="text-sm font-medium text-gray-300">{t('recordingDuration')}</span>
           </div>
           <div className="text-2xl font-bold text-white">
             {displayDuration}
           </div>
           <div className="text-xs text-gray-400">
-            {totalReadings > 0 ? '分钟' : '无会话'}
+            {totalReadings > 0 ? t('minutes') : t('noSession')}
           </div>
         </div>
 
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Database className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-medium text-gray-300">活跃通道</span>
+            <span className="text-sm font-medium text-gray-300">{t('activeChannels')}</span>
           </div>
           <div className="text-2xl font-bold text-white">
             {activeChannels}
           </div>
-          <div className="text-xs text-gray-400">共10个通道</div>
+          <div className="text-xs text-gray-400">{serialConfig.registerCount} {t('totalChannels')}</div>
         </div>
 
         <div className="bg-gray-700 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Save className="w-4 h-4 text-yellow-400" />
-            <span className="text-sm font-medium text-gray-300">本地存储</span>
+            <span className="text-sm font-medium text-gray-300">{t('localStorage')}</span>
           </div>
           <div className="text-2xl font-bold text-white">
             {localStorageUsage}
           </div>
           <div className="text-xs text-gray-400">
-            已使用空间
+            {t('usedSpace')}
           </div>
         </div>
       </div>
@@ -298,13 +298,13 @@ export default function DataRecordingControls({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 记录配置 */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">记录配置</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">{t('recordingConfig')}</h3>
           
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
                 <Clock className="w-4 h-4 inline mr-1" />
-                采集频率 (Hz)
+                {t('samplingFrequency')} (Hz)
               </label>
               <div className="flex gap-2">
                 <input
@@ -315,14 +315,14 @@ export default function DataRecordingControls({
                   max="100"
                   step="0.1"
                   className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="输入频率"
+                  placeholder={language === 'zh' ? '输入频率' : 'Enter frequency'}
                 />
                 <div className="flex items-center px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-300">
                   Hz
                 </div>
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                当前: {currentFrequency} Hz (每 {recordingConfig.interval.toFixed(1)} 秒采集一次)
+                {language === 'zh' ? '当前' : 'Current'}: {currentFrequency} Hz ({language === 'zh' ? '每' : 'every'} {recordingConfig.interval.toFixed(1)} {language === 'zh' ? '秒采集一次' : 'seconds'})
               </div>
               <div className="flex gap-1 mt-2">
                 {[0.1, 0.2, 0.5, 1, 2, 5, 10].map(freq => (
@@ -342,10 +342,10 @@ export default function DataRecordingControls({
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-3">
-                通道选择
+                {t('channelSelection')}
               </label>
-              <div className="grid grid-cols-5 gap-2">
-                {recordingConfig.selectedChannels.map((selected, index) => (
+              <div className="grid grid-cols-4 gap-2">
+                {recordingConfig.selectedChannels.slice(0, serialConfig.registerCount).map((selected, index) => (
                   <button
                     key={index}
                     onClick={() => handleChannelToggle(index)}
@@ -365,11 +365,11 @@ export default function DataRecordingControls({
 
         {/* 数据导出与管理 */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">数据导出与管理</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">{t('dataExportAndManagement')}</h3>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-gray-300">自动导出</span>
+              <span className="text-gray-300">{t('autoExport')}</span>
               <button
                 onClick={handleAutoSaveToggle}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -386,7 +386,7 @@ export default function DataRecordingControls({
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                自动导出间隔 (分钟)
+                {t('autoExportInterval')} ({t('minutes')})
               </label>
               <select
                 value={storageConfig.autoSaveInterval}
@@ -394,28 +394,28 @@ export default function DataRecordingControls({
                 disabled={!storageConfig.autoSaveEnabled}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
               >
-                <option value={1}>1分钟</option>
-                <option value={5}>5分钟</option>
-                <option value={10}>10分钟</option>
-                <option value={15}>15分钟</option>
-                <option value={30}>30分钟</option>
-                <option value={60}>1小时</option>
+                <option value={1}>1{language === 'zh' ? '分钟' : ' minute'}</option>
+                <option value={5}>5{language === 'zh' ? '分钟' : ' minutes'}</option>
+                <option value={10}>10{language === 'zh' ? '分钟' : ' minutes'}</option>
+                <option value={15}>15{language === 'zh' ? '分钟' : ' minutes'}</option>
+                <option value={30}>30{language === 'zh' ? '分钟' : ' minutes'}</option>
+                <option value={60}>1{language === 'zh' ? '小时' : ' hour'}</option>
               </select>
             </div>
 
             <div className="text-xs text-gray-400">
-              最后导出时间: {formatLastSaveTime()}
+              {t('lastExportTime')}: {formatLastSaveTime()}
             </div>
 
             {/* 导出状态信息 */}
             {storageConfig.totalSavedReadings > 0 && (
               <div className="p-3 bg-gray-700 rounded-lg">
-                <div className="text-sm text-gray-300 mb-1">最后导出信息:</div>
+                <div className="text-sm text-gray-300 mb-1">{language === 'zh' ? '最后导出信息:' : 'Last export info:'}:</div>
                 <div className="text-xs text-gray-400">
-                  数据量: {storageConfig.totalSavedReadings.toLocaleString()} 条记录
+                  {language === 'zh' ? '数据量' : 'Data count'}: {storageConfig.totalSavedReadings.toLocaleString()} {t('records')}
                 </div>
                 <div className="text-xs text-gray-400">
-                  导出时间: {formatLastSaveTime()}
+                  {language === 'zh' ? '导出时间' : 'Export time'}: {formatLastSaveTime()}
                 </div>
               </div>
             )}
@@ -427,7 +427,7 @@ export default function DataRecordingControls({
                 className="flex items-center gap-2 w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
               >
                 <Download className="w-4 h-4" />
-                立即导出CSV
+                {t('exportCSVNow')}
               </button>
 
               <button
@@ -436,16 +436,17 @@ export default function DataRecordingControls({
                 className="flex items-center gap-2 w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
               >
                 <FileText className="w-4 h-4" />
-                加载本地数据
+                {t('loadLocalData')}
               </button>
 
               <button
                 onClick={handleClearSavedData}
-                disabled={localStorageUsage === '0 KB'}
+                disabled={localStorageUsage === '0 KB' || recordingConfig.isRecording}
                 className="flex items-center gap-2 w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                title={recordingConfig.isRecording ? (language === 'zh' ? '请先停止记录' : 'Please stop recording first') : ''}
               >
                 <Trash2 className="w-4 h-4" />
-                清理本地数据
+                {t('clearLocalData')}
               </button>
             </div>
           </div>

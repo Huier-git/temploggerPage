@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calculator, Code, Save, RotateCcw, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { useTranslation } from '../utils/i18n';
 
 export interface TemperatureConversionConfig {
   mode: 'builtin' | 'custom';
@@ -10,27 +11,45 @@ export interface TemperatureConversionConfig {
 interface TemperatureConversionConfigProps {
   config: TemperatureConversionConfig;
   onConfigChange: (config: TemperatureConversionConfig) => void;
+  language: 'zh' | 'en';
 }
 
-export default function TemperatureConversionConfig({ config, onConfigChange }: TemperatureConversionConfigProps) {
+export default function TemperatureConversionConfig({ config, onConfigChange, language }: TemperatureConversionConfigProps) {
+  const { t } = useTranslation(language);
   const [testResult, setTestResult] = useState<{ value: number; error?: string } | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false); // 默认折叠
 
   // 内置转换逻辑
-  const builtinConversion = `// 内置转换逻辑
+  const builtinConversion = language === 'zh' 
+    ? `// 内置转换逻辑
+if (registerValue > 32767) {
+  return (registerValue - 65536) * 0.1;
+}
+return registerValue * 0.1;`
+    : `// Built-in conversion logic
 if (registerValue > 32767) {
   return (registerValue - 65536) * 0.1;
 }
 return registerValue * 0.1;`;
 
   // 默认自定义公式
-  const defaultCustomFormula = `// 自定义转换公式
+  const defaultCustomFormula = language === 'zh'
+    ? `// 自定义转换公式
 // registerValue: 原始寄存器值 (0-65535)
 // 返回: 温度值 (°C)
 
 if (registerValue > 32767) {
   // 处理负温度 (二进制补码)
+  return (registerValue - 65536) * 0.1;
+}
+return registerValue * 0.1;`
+    : `// Custom conversion formula
+// registerValue: Raw register value (0-65535)
+// Return: Temperature value (°C)
+
+if (registerValue > 32767) {
+  // Handle negative temperature (two's complement)
   return (registerValue - 65536) * 0.1;
 }
 return registerValue * 0.1;`;
@@ -60,14 +79,14 @@ return registerValue * 0.1;`;
       }
       
       if (typeof result !== 'number' || isNaN(result)) {
-        throw new Error('公式返回值不是有效数字');
+        throw new Error(language === 'zh' ? '公式返回值不是有效数字' : 'Formula returns invalid number');
       }
       
       setTestResult({ value: result });
     } catch (error) {
       setTestResult({ 
         value: 0, 
-        error: error instanceof Error ? error.message : '未知错误' 
+        error: error instanceof Error ? error.message : (language === 'zh' ? '未知错误' : 'Unknown error')
       });
     }
   };
@@ -108,12 +127,12 @@ return registerValue * 0.1;`;
 
   // 预设测试值
   const presetTestValues = [
-    { label: '正常温度 (25°C)', value: 250 },
-    { label: '高温 (100°C)', value: 1000 },
-    { label: '负温度 (-10°C)', value: 65436 }, // 65536 - 100
-    { label: '零度', value: 0 },
-    { label: '最大正值', value: 32767 },
-    { label: '最大负值', value: 32768 }
+    { label: language === 'zh' ? '正常温度 (25°C)' : 'Normal temp (25°C)', value: 250 },
+    { label: language === 'zh' ? '高温 (100°C)' : 'High temp (100°C)', value: 1000 },
+    { label: language === 'zh' ? '负温度 (-10°C)' : 'Negative temp (-10°C)', value: 65436 }, // 65536 - 100
+    { label: language === 'zh' ? '零度' : 'Zero', value: 0 },
+    { label: language === 'zh' ? '最大正值' : 'Max positive', value: 32767 },
+    { label: language === 'zh' ? '最大负值' : 'Max negative', value: 32768 }
   ];
 
   return (
@@ -125,13 +144,13 @@ return registerValue * 0.1;`;
       >
         <div className="flex items-center gap-3">
           <Calculator className="w-5 h-5 text-green-400" />
-          <h3 className="text-xl font-semibold text-white">温度转换配置</h3>
+          <h3 className="text-xl font-semibold text-white">{t('temperatureConversionConfig')}</h3>
           <div className={`px-2 py-1 rounded text-xs font-medium ${
             config.mode === 'builtin' 
               ? 'bg-green-900 text-green-300'
               : 'bg-blue-900 text-blue-300'
           }`}>
-            {config.mode === 'builtin' ? '内置转换' : '自定义公式'}
+            {config.mode === 'builtin' ? t('builtinConversion') : t('customFormula')}
           </div>
         </div>
         
@@ -145,7 +164,7 @@ return registerValue * 0.1;`;
               className="flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
-              重置
+              {t('reset')}
             </button>
           )}
           
@@ -162,7 +181,7 @@ return registerValue * 0.1;`;
         <div className="mt-6 space-y-6">
           {/* 转换模式选择 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">转换模式</label>
+            <label className="block text-sm font-medium text-gray-300 mb-3">{t('conversionMode')}</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => handleModeChange('builtin')}
@@ -174,10 +193,13 @@ return registerValue * 0.1;`;
               >
                 <div className="flex items-center gap-2 mb-2">
                   <CheckCircle className="w-4 h-4" />
-                  <span className="font-medium">内置转换</span>
+                  <span className="font-medium">{t('builtinConversion')}</span>
                 </div>
                 <div className="text-xs opacity-75">
-                  使用标准的16位二进制补码转换，分辨率0.1°C
+                  {language === 'zh' 
+                    ? '使用标准的16位二进制补码转换，分辨率0.1°C'
+                    : 'Use standard 16-bit two\'s complement conversion, 0.1°C resolution'
+                  }
                 </div>
               </button>
 
@@ -191,10 +213,13 @@ return registerValue * 0.1;`;
               >
                 <div className="flex items-center gap-2 mb-2">
                   <Code className="w-4 h-4" />
-                  <span className="font-medium">自定义公式</span>
+                  <span className="font-medium">{t('customFormula')}</span>
                 </div>
                 <div className="text-xs opacity-75">
-                  编写自定义JavaScript代码进行温度转换
+                  {language === 'zh' 
+                    ? '编写自定义JavaScript代码进行温度转换'
+                    : 'Write custom JavaScript code for temperature conversion'
+                  }
                 </div>
               </button>
             </div>
@@ -203,7 +228,7 @@ return registerValue * 0.1;`;
           {/* 当前转换逻辑显示 */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              当前转换逻辑
+              {t('currentConversionLogic')}
             </label>
             <div className="bg-gray-900 rounded-lg p-4 border border-gray-600">
               <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
@@ -216,28 +241,28 @@ return registerValue * 0.1;`;
           {config.mode === 'custom' && (
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                自定义转换公式
+                {t('customConversionFormula')}
               </label>
               <textarea
                 value={config.customFormula}
                 onChange={(e) => handleFormulaChange(e.target.value)}
                 className="w-full h-40 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white font-mono text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
-                placeholder="输入JavaScript代码..."
+                placeholder={language === 'zh' ? '输入JavaScript代码...' : 'Enter JavaScript code...'}
               />
               <div className="mt-2 text-xs text-gray-400">
-                <strong>可用变量:</strong> registerValue (0-65535) | <strong>返回:</strong> 温度值 (°C)
+                <strong>{language === 'zh' ? '可用变量' : 'Available variables'}:</strong> registerValue (0-65535) | <strong>{language === 'zh' ? '返回' : 'Return'}:</strong> {language === 'zh' ? '温度值 (°C)' : 'Temperature value (°C)'}
               </div>
             </div>
           )}
 
           {/* 测试区域 */}
           <div className="p-4 bg-gray-700 rounded-lg">
-            <h4 className="text-lg font-semibold text-white mb-4">公式测试</h4>
+            <h4 className="text-lg font-semibold text-white mb-4">{t('formulaTest')}</h4>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  测试寄存器值
+                  {t('testRegisterValue')}
                 </label>
                 <input
                   type="number"
@@ -250,7 +275,7 @@ return registerValue * 0.1;`;
                 
                 {showAdvanced && (
                   <div className="mt-2">
-                    <div className="text-xs text-gray-400 mb-2">预设测试值:</div>
+                    <div className="text-xs text-gray-400 mb-2">{language === 'zh' ? '预设测试值:' : 'Preset test values:'}:</div>
                     <div className="grid grid-cols-2 gap-1">
                       {presetTestValues.map((preset, index) => (
                         <button
@@ -268,7 +293,7 @@ return registerValue * 0.1;`;
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
-                  转换结果
+                  {t('conversionResult')}
                 </label>
                 <div className="flex gap-2">
                   <div className={`flex-1 px-3 py-2 rounded-lg border ${
@@ -280,13 +305,13 @@ return registerValue * 0.1;`;
                       testResult.error ? (
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4" />
-                          <span className="text-sm">错误: {testResult.error}</span>
+                          <span className="text-sm">{language === 'zh' ? '错误' : 'Error'}: {testResult.error}</span>
                         </div>
                       ) : (
                         <span className="text-lg font-mono">{testResult.value.toFixed(1)}°C</span>
                       )
                     ) : (
-                      <span className="text-gray-400">点击测试按钮</span>
+                      <span className="text-gray-400">{language === 'zh' ? '点击测试按钮' : 'Click test button'}</span>
                     )}
                   </div>
                   
@@ -294,7 +319,7 @@ return registerValue * 0.1;`;
                     onClick={testConversion}
                     className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors"
                   >
-                    测试
+                    {t('test')}
                   </button>
                 </div>
               </div>
@@ -307,7 +332,7 @@ return registerValue * 0.1;`;
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
             >
-              {showAdvanced ? '简化' : '高级'}设置
+              {showAdvanced ? t('simple') : t('advanced')}{language === 'zh' ? '设置' : ' settings'}
             </button>
             
             <button
@@ -315,7 +340,7 @@ return registerValue * 0.1;`;
               className="flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
-              重置
+              {t('reset')}
             </button>
           </div>
 
@@ -323,13 +348,13 @@ return registerValue * 0.1;`;
           <div className="p-4 bg-blue-900 border border-blue-700 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-4 h-4 text-blue-400" />
-              <span className="text-blue-300 font-medium">重要说明</span>
+              <span className="text-blue-300 font-medium">{t('importantNotes')}</span>
             </div>
             <ul className="text-blue-300 text-sm space-y-1">
-              <li>• <strong>测试模式</strong>: 生成的数据不经过温度转换，直接使用温度值</li>
-              <li>• <strong>实际设备</strong>: 从Modbus寄存器读取的原始值会经过此转换</li>
-              <li>• <strong>自定义公式</strong>: 请确保代码安全，避免无限循环或异常操作</li>
-              <li>• <strong>数据范围</strong>: 寄存器值范围 0-65535，推荐温度范围 -273°C 到 1000°C</li>
+              <li>• <strong>{language === 'zh' ? '测试模式' : 'Test mode'}</strong>: {language === 'zh' ? '生成的数据不经过温度转换，直接使用温度值' : 'Generated data does not go through temperature conversion, uses temperature values directly'}</li>
+              <li>• <strong>{language === 'zh' ? '实际设备' : 'Real device'}</strong>: {language === 'zh' ? '从Modbus寄存器读取的原始值会经过此转换' : 'Raw values read from Modbus registers will go through this conversion'}</li>
+              <li>• <strong>{language === 'zh' ? '自定义公式' : 'Custom formula'}</strong>: {language === 'zh' ? '请确保代码安全，避免无限循环或异常操作' : 'Please ensure code safety, avoid infinite loops or abnormal operations'}</li>
+              <li>• <strong>{language === 'zh' ? '数据范围' : 'Data range'}</strong>: {language === 'zh' ? '寄存器值范围 0-65535，推荐温度范围 -273°C 到 1000°C' : 'Register value range 0-65535, recommended temperature range -273°C to 1000°C'}</li>
             </ul>
           </div>
         </div>

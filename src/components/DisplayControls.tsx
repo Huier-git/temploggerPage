@@ -1,14 +1,17 @@
 import React from 'react';
 import { Monitor, Clock, Grid, Eye, BarChart3, TrendingUp, Upload } from 'lucide-react';
 import { DisplayConfig } from '../types';
+import { useTranslation } from '../utils/i18n';
 
 interface DisplayControlsProps {
   config: DisplayConfig;
   onConfigChange: (config: DisplayConfig) => void;
   onImportData?: (file: File) => void;
+  language: 'zh' | 'en';
 }
 
-export default function DisplayControls({ config, onConfigChange, onImportData }: DisplayControlsProps) {
+export default function DisplayControls({ config, onConfigChange, onImportData, language }: DisplayControlsProps) {
+  const { t } = useTranslation(language);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleModeChange = (mode: 'full' | 'sliding') => {
@@ -66,7 +69,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
       <div className="flex items-center gap-3 mb-4">
         <Monitor className="w-4 h-4 text-cyan-400" />
-        <h2 className="text-lg font-semibold text-white">显示设置</h2>
+        <h2 className="text-lg font-semibold text-white">{t('displaySettings')}</h2>
       </div>
 
       <div className="space-y-4">
@@ -74,7 +77,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             <BarChart3 className="w-4 h-4 inline mr-1" />
-            视图模式
+            {t('viewMode')}
           </label>
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -86,7 +89,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              综合视图
+              {t('combined')}
             </button>
             <button
               onClick={() => handleViewModeChange('individual')}
@@ -97,7 +100,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               }`}
             >
               <BarChart3 className="w-4 h-4" />
-              分析视图
+              {t('individual')}
             </button>
           </div>
         </div>
@@ -106,7 +109,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              数据范围
+              {t('dataRange')}
             </label>
             <div className="flex rounded-lg border border-gray-600 overflow-hidden">
               <button
@@ -117,7 +120,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
-                全部
+                {t('full')}
               </button>
               <button
                 onClick={() => handleModeChange('sliding')}
@@ -127,7 +130,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
-                窗口
+                {t('window')}
               </button>
             </div>
           </div>
@@ -135,7 +138,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               <Clock className="w-4 h-4 inline mr-1" />
-              时间窗口
+              {t('timeWindow')}
             </label>
             <select
               value={config.timeWindow}
@@ -143,12 +146,16 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               disabled={config.mode === 'full'}
               className="w-full px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value={1}>1分钟</option>
-              <option value={5}>5分钟</option>
-              <option value={10}>10分钟</option>
-              <option value={15}>15分钟</option>
-              <option value={30}>30分钟</option>
-              <option value={60}>1小时</option>
+              <option value={1}>1 {t('min')}</option>
+              <option value={5}>5 {t('min')}</option>
+              <option value={10}>10 {t('min')}</option>
+              <option value={15}>15 {t('min')}</option>
+              <option value={30}>30 {t('min')}</option>
+              <option value={60}>1 {t('hour')}</option>
+              <option value={120}>2 {t('hours')}</option>
+              <option value={180}>3 {t('hours')}</option>
+              <option value={240}>4 {t('hours')}</option>
+              <option value={300}>5 {t('hours')}</option>
             </select>
           </div>
         </div>
@@ -156,7 +163,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
         {/* 显示选项 - 紧凑 */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            显示选项
+            {t('displayOptions')}
           </label>
           <div className="grid grid-cols-3 gap-2">
             <button
@@ -168,7 +175,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               }`}
             >
               <Grid className="w-3 h-3" />
-              网格
+              {t('grid')}
             </button>
 
             <button
@@ -180,7 +187,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               }`}
             >
               <Eye className="w-3 h-3" />
-              图例
+              {t('legend')}
             </button>
 
             <button
@@ -192,7 +199,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
               }`}
             >
               <Clock className="w-3 h-3" />
-              相对时间
+              {t('relative')}
             </button>
           </div>
         </div>
@@ -200,14 +207,14 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
         {/* CSV导入功能 */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            数据导入
+            {t('dataImport')}
           </label>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <Upload className="w-4 h-4" />
-            导入CSV文件
+            {t('importCSVFile')}
           </button>
           
           <input
@@ -219,7 +226,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData }
           />
           
           <div className="text-xs text-gray-400 mt-1">
-            支持导入CSV格式的温度数据文件
+            {t('supportImportingCSV')}
           </div>
         </div>
       </div>

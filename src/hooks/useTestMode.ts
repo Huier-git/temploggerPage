@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TemperatureReading, TestModeConfig } from '../types';
 
-export function useTestMode(config: TestModeConfig) {
+export function useTestMode(config: TestModeConfig, channelCount: number = 10) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const generateTestReading = useCallback((): TemperatureReading[] => {
     const timestamp = Date.now();
     const readings: TemperatureReading[] = [];
 
-    for (let channel = 1; channel <= 10; channel++) {
+    // 根据寄存器数量生成对应数量的通道数据
+    for (let channel = 1; channel <= channelCount; channel++) {
       // Base temperature: each channel has different baseline
       const baseTemp = config.temperatureRange.min + 
-        ((config.temperatureRange.max - config.temperatureRange.min) / 10) * (channel - 1);
+        ((config.temperatureRange.max - config.temperatureRange.min) / channelCount) * (channel - 1);
       
       // Time-related periodic variation
       const timeVariation = Math.sin(timestamp / 30000 + channel) * 
@@ -40,7 +41,7 @@ export function useTestMode(config: TestModeConfig) {
     }
 
     return readings;
-  }, [config]);
+  }, [config, channelCount]);
 
   return {
     generateTestReading,

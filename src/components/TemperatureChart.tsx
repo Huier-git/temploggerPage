@@ -59,13 +59,13 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [filteredReadings, displayConfig.relativeTime, startTime]);
 
-  // 计算Y轴范围
-  const yAxisDomain = React.useMemo(() => {
-    if (chartData.length === 0) return ['dataMin - 5', 'dataMax + 5'];
+  // 计算Y轴范围 - 统一处理，确保一致性
+  const calculateYAxisDomain = React.useCallback((data: any[], channelsToUse: ChannelConfig[]) => {
+    if (data.length === 0) return [0, 50];
     
     const allTemperatures: number[] = [];
-    chartData.forEach(item => {
-      channels.filter(ch => ch.enabled).forEach(channel => {
+    data.forEach(item => {
+      channelsToUse.filter(ch => ch.enabled).forEach(channel => {
         const temp = item[`channel${channel.id}`];
         if (typeof temp === 'number' && !isNaN(temp)) {
           allTemperatures.push(temp);
@@ -80,19 +80,26 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
     const range = maxTemp - minTemp;
     const padding = Math.max(range * 0.1, 2); // 至少2度的padding
     
-    return [minTemp - padding, maxTemp + padding];
-  }, [chartData, channels]);
+    return [
+      Math.floor((minTemp - padding) * 10) / 10, // 保留1位小数
+      Math.ceil((maxTemp + padding) * 10) / 10   // 保留1位小数
+    ];
+  }, []);
+
+  const yAxisDomain = React.useMemo(() => {
+    return calculateYAxisDomain(chartData, channels);
+  }, [chartData, channels, calculateYAxisDomain]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 shadow-xl">
           <p className="text-gray-300 text-sm mb-2 font-medium">
-            {displayConfig.relativeTime ? `时间: ${label}` : `时间: ${label}`}
+            {displayConfig.relativeTime ? `Time: ${label}` : `Time: ${label}`}
           </p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
-              {`${entry.name}: ${formatTemperature(entry.value)}`}
+              {`${entry.name}: ${entry.value.toFixed(1)}°C`}
             </p>
           ))}
         </div>
@@ -111,18 +118,21 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
     if (channelData.length === 0) {
       return (
         <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-64 flex items-center justify-center">
-          <p className="text-gray-400 text-sm">{channel.name} - 无数据</p>
+          <p className="text-gray-400 text-sm">{channel.name} - No Data</p>
         </div>
       );
     }
 
-    // 计算单个通道的Y轴范围
+    // 计算单个通道的Y轴范围 - 使用统一的计算方法
     const channelTemps = channelData.map(d => d.temperature).filter(t => !isNaN(t));
     const minTemp = Math.min(...channelTemps);
     const maxTemp = Math.max(...channelTemps);
     const range = maxTemp - minTemp;
     const padding = Math.max(range * 0.1, 1);
-    const channelYDomain = [minTemp - padding, maxTemp + padding];
+    const channelYDomain = [
+      Math.floor((minTemp - padding) * 10) / 10, // 保留1位小数
+      Math.ceil((maxTemp + padding) * 10) / 10   // 保留1位小数
+    ];
 
     return (
       <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
@@ -150,7 +160,7 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
               <YAxis 
                 stroke="#9CA3AF"
                 fontSize={10}
-                tickFormatter={(value) => `${value}°C`}
+                tickFormatter={(value) => `${value.toFixed(1)}°C`}
                 tick={{ fill: '#9CA3AF' }}
                 domain={channelYDomain}
               />
@@ -178,8 +188,8 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
       <div className="bg-gray-800 rounded-lg border border-gray-700 h-[600px] flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-4">📊</div>
-          <p className="text-gray-400 text-lg">无温度数据</p>
-          <p className="text-gray-500 text-sm mt-2">启动测试模式或连接设备开始监测</p>
+          <p className="text-gray-400 text-lg">No Temperature Data</p>
+          <p className="text-gray-500 text-sm mt-2">Start test mode or connect device to begin monitoring</p>
         </div>
       </div>
     );
@@ -193,14 +203,14 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-2xl font-bold text-white">
-            分析视图 - 通道分析
+            Individual View - Channel Analysis
           </h3>
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-400">
-              显示模式: {displayConfig.mode === 'sliding' ? `滑动窗口 (${displayConfig.timeWindow}分钟)` : '完整历史'}
+              Display Mode: {displayConfig.mode === 'sliding' ? `Sliding Window (${displayConfig.timeWindow}min)` : 'Full History'}
             </div>
             <div className="text-sm text-gray-400">
-              时间轴: {displayConfig.relativeTime ? '相对时间' : '绝对时间'}
+              Time Axis: {displayConfig.relativeTime ? 'Relative Time' : 'Absolute Time'}
             </div>
           </div>
         </div>
@@ -219,17 +229,17 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-2xl font-bold text-white">
-          综合视图 - 温度趋势
+          Combined View - Temperature Trends
         </h3>
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-400">
-            显示模式: {displayConfig.mode === 'sliding' ? `滑动窗口 (${displayConfig.timeWindow}分钟)` : '完整历史'}
+            Display Mode: {displayConfig.mode === 'sliding' ? `Sliding Window (${displayConfig.timeWindow}min)` : 'Full History'}
           </div>
           <div className="text-sm text-gray-400">
-            时间轴: {displayConfig.relativeTime ? '相对时间 (分:秒)' : '绝对时间'}
+            Time Axis: {displayConfig.relativeTime ? 'Relative Time (min:sec)' : 'Absolute Time'}
           </div>
           <div className="text-sm text-gray-400">
-            数据点: {chartData.length.toLocaleString()}
+            Data Points: {chartData.length.toLocaleString()}
           </div>
         </div>
       </div>
@@ -253,7 +263,7 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
             <YAxis 
               stroke="#9CA3AF"
               fontSize={12}
-              tickFormatter={(value) => `${value}°C`}
+              tickFormatter={(value) => `${value.toFixed(1)}°C`}
               tick={{ fill: '#9CA3AF' }}
               domain={yAxisDomain}
             />

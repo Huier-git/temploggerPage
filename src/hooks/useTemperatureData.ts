@@ -3,10 +3,10 @@ import { TemperatureReading, SerialConfig, ConnectionStatus, RecordingConfig, Te
 import { isValidTemperature, convertRawToTemperature } from '../utils/temperatureProcessor';
 import { useTestMode } from './useTestMode';
 
-// 内存优化：限制最大数据点数
-const MAX_READINGS = 50000; // 最大5万个数据点
-const CLEANUP_THRESHOLD = 45000; // 达到4.5万时开始清理
-const CLEANUP_KEEP = 30000; // 清理后保留3万个最新数据点
+// Memory optimization: limit maximum data points (increased by 10x)
+const MAX_READINGS = 5000000; // Maximum 5M data points
+const CLEANUP_THRESHOLD = 4500000; // Start cleanup at 4.5M
+const CLEANUP_KEEP = 3000000; // Keep 3M newest data points after cleanup
 
 export function useTemperatureData(
   serialConfig: SerialConfig,
@@ -17,14 +17,14 @@ export function useTemperatureData(
 ) {
   const [readings, setReadings] = useState<TemperatureReading[]>([]);
   const [isReading, setIsReading] = useState(false);
-  const { generateTestReading } = useTestMode(testModeConfig);
+  const { generateTestReading } = useTestMode(testModeConfig, serialConfig.registerCount); // 传入寄存器数量
   const lastReadingTime = useRef<number>(0);
 
-  // 内存优化：自动清理旧数据
+  // Memory optimization: auto cleanup old data
   const optimizeMemory = useCallback((currentReadings: TemperatureReading[]) => {
     if (currentReadings.length > CLEANUP_THRESHOLD) {
-      console.log(`内存优化：清理旧数据，从 ${currentReadings.length} 条减少到 ${CLEANUP_KEEP} 条`);
-      // 保留最新的数据点
+      console.log(`Memory optimization: cleaning old data, reducing from ${currentReadings.length} to ${CLEANUP_KEEP} records`);
+      // Keep the newest data points
       return currentReadings
         .sort((a, b) => a.timestamp - b.timestamp)
         .slice(-CLEANUP_KEEP);
@@ -49,29 +49,29 @@ export function useTemperatureData(
   const clearReadings = useCallback(() => {
     setReadings([]);
     lastReadingTime.current = 0;
-    console.log('数据已清空，内存已释放');
+    console.log('Data cleared, memory released');
   }, []);
 
   const replaceReadings = useCallback((newReadings: TemperatureReading[]) => {
-    // 对导入的数据也进行内存优化
+    // Also apply memory optimization to imported data
     const optimizedReadings = newReadings.length > MAX_READINGS 
       ? newReadings.slice(-MAX_READINGS)
       : newReadings;
     
     setReadings(optimizedReadings);
-    console.log(`数据已替换，当前数据点: ${optimizedReadings.length}`);
+    console.log(`Data replaced, current data points: ${optimizedReadings.length}`);
   }, []);
 
-  // Test mode data generation - 测试模式不经过温度转换
+  // Test mode data generation - test mode does NOT go through temperature conversion
   useEffect(() => {
     if (!testModeConfig.enabled) return;
 
-    const actualInterval = Math.max(recordingConfig.interval * 1000, 100); // 最小100ms间隔
+    const actualInterval = Math.max(recordingConfig.interval * 1000, 100); // minimum 100ms interval
     
     const interval = setInterval(() => {
       const now = Date.now();
       
-      // 检查是否应该生成新数据（基于录制间隔）
+      // Check if new data should be generated (based on recording interval)
       if (now - lastReadingTime.current >= recordingConfig.interval * 1000) {
         const testReadings = generateTestReading();
         const filteredReadings = testReadings.filter(reading => 
@@ -83,12 +83,12 @@ export function useTemperatureData(
           lastReadingTime.current = now;
         }
       }
-    }, Math.min(actualInterval, 1000)); // 检查频率不超过1秒
+    }, Math.min(actualInterval, 1000)); // check frequency no more than 1 second
 
     return () => clearInterval(interval);
   }, [testModeConfig, recordingConfig.selectedChannels, recordingConfig.interval, generateTestReading, addMultipleReadings]);
 
-  // Real device data reading (only when not in test mode) - 实际设备数据经过温度转换
+  // Real device data reading (only when not in test mode) - real device data goes through temperature conversion
   const readTemperatureData = useCallback(async () => {
     if (testModeConfig.enabled || !connectionStatus.isConnected || !recordingConfig.isRecording) {
       return;
@@ -100,20 +100,20 @@ export function useTemperatureData(
       const timestamp = Date.now();
       const newReadings: TemperatureReading[] = [];
       
-      // 使用自定义寄存器或连续寄存器
+      // Use custom registers or consecutive registers
       const registersToRead = serialConfig.customRegisters || 
-        Array.from({ length: 10 }, (_, i) => serialConfig.startRegister + i);
+        Array.from({ length: serialConfig.registerCount }, (_, i) => serialConfig.startRegister + i);
       
       registersToRead.forEach((register, index) => {
         const channel = index + 1;
-        if (channel <= 10 && recordingConfig.selectedChannels[channel - 1]) {
-          // 模拟从指定寄存器读取原始数据
-          const baseRaw = 200 + (register % 100) * 2; // 基于寄存器地址的基础原始值
+        if (channel <= serialConfig.registerCount && recordingConfig.selectedChannels[channel - 1]) {
+          // Simulate reading raw data from specified register
+          const baseRaw = 200 + (register % 100) * 2; // Base raw value based on register address
           const variation = Math.sin(timestamp / 30000 + channel) * 30;
           const noise = (Math.random() - 0.5) * 10;
           const rawValue = Math.round(Math.max(0, Math.min(65535, baseRaw + variation + noise)));
           
-          // 使用温度转换配置进行转换（仅在实际设备模式下）
+          // Use temperature conversion configuration for conversion (only in real device mode)
           const temperature = convertRawToTemperature(rawValue, temperatureConversionConfig);
           
           if (isValidTemperature(temperature)) {
@@ -132,7 +132,7 @@ export function useTemperatureData(
       }
       
     } catch (error) {
-      console.error('读取温度数据失败:', error);
+      console.error('Failed to read temperature data:', error);
     } finally {
       setIsReading(false);
     }
@@ -148,7 +148,7 @@ export function useTemperatureData(
       readTemperatureData();
     }, recordingConfig.interval * 1000);
 
-    // 立即读取一次
+    // Read immediately once
     readTemperatureData();
 
     return () => clearInterval(interval);
@@ -160,18 +160,18 @@ export function useTemperatureData(
     readTemperatureData
   ]);
 
-  // 内存使用监控
+  // Memory usage monitoring
   useEffect(() => {
     const memoryCheck = setInterval(() => {
       if (readings.length > 0) {
         const memoryUsage = JSON.stringify(readings).length;
         const memoryMB = (memoryUsage / 1024 / 1024).toFixed(2);
         
-        if (readings.length % 10000 === 0) { // 每1万条数据记录一次
-          console.log(`内存使用情况: ${readings.length} 条数据, 约 ${memoryMB} MB`);
+        if (readings.length % 10000 === 0) { // Log every 10k records
+          console.log(`Memory usage: ${readings.length} records, approximately ${memoryMB} MB`);
         }
       }
-    }, 30000); // 每30秒检查一次
+    }, 30000); // Check every 30 seconds
 
     return () => clearInterval(memoryCheck);
   }, [readings.length]);

@@ -100,7 +100,7 @@ export function useDataStorage() {
       typeof reading.channel === 'number' &&
       typeof reading.temperature === 'number' &&
       !isNaN(reading.temperature) &&
-      reading.channel >= 1 && reading.channel <= 10
+      reading.channel >= 1 && reading.channel <= 16
     );
 
     if (validReadings.length === 0) {
@@ -157,7 +157,7 @@ export function useDataStorage() {
         typeof reading.channel === 'number' &&
         typeof reading.temperature === 'number' &&
         !isNaN(reading.temperature) &&
-        reading.channel >= 1 && reading.channel <= 10
+        reading.channel >= 1 && reading.channel <= 16
       );
 
       if (validReadings.length !== data.readings.length) {
@@ -253,7 +253,7 @@ export function useDataStorage() {
             
             // 验证数据有效性
             if (isNaN(timestamp) || isNaN(channel) || isNaN(temperature) ||
-                channel < 1 || channel > 10 || 
+                channel < 1 || channel > 16 || 
                 temperature < -273.15 || temperature > 1000) {
               invalidCount++;
               continue;
@@ -288,7 +288,7 @@ export function useDataStorage() {
     });
   }, []);
 
-  // 清理数据功能
+  // 清理数据功能 - 更新本地存储使用量
   const clearSavedData = useCallback(() => {
     try {
       localStorage.removeItem('temperatureData');
@@ -301,6 +301,10 @@ export function useDataStorage() {
         lastAutoSave: undefined
       }));
       setSavedData([]);
+      
+      // 触发本地存储使用量更新
+      window.dispatchEvent(new Event('storage'));
+      
       return true;
     } catch (error) {
       console.error('清理数据失败:', error);
