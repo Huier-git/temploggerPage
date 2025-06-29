@@ -7,9 +7,17 @@ interface TemperatureChartProps {
   readings: TemperatureReading[];
   displayConfig: DisplayConfig;
   channels: ChannelConfig[];
+  language: 'zh' | 'en';
+  onHoverDataChange?: (hoverData: { [channelId: number]: number } | null) => void; // 新增：鼠标悬停数据回调
 }
 
-export default function TemperatureChart({ readings, displayConfig, channels }: TemperatureChartProps) {
+export default function TemperatureChart({ 
+  readings, 
+  displayConfig, 
+  channels, 
+  language,
+  onHoverDataChange 
+}: TemperatureChartProps) {
   // Filter readings based on display mode and time window
   const filteredReadings = React.useMemo(() => {
     if (displayConfig.mode === 'sliding') {
@@ -90,6 +98,33 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
     return calculateYAxisDomain(chartData, channels);
   }, [chartData, channels, calculateYAxisDomain]);
 
+  // 处理鼠标悬停事件
+  const handleMouseMove = React.useCallback((data: any) => {
+    if (!onHoverDataChange || !data || !data.activePayload) {
+      return;
+    }
+
+    // 提取当前悬停点的温度数据
+    const hoverData: { [channelId: number]: number } = {};
+    
+    channels.filter(ch => ch.enabled).forEach(channel => {
+      const channelKey = `channel${channel.id}`;
+      const payload = data.activePayload.find((p: any) => p.dataKey === channelKey);
+      if (payload && typeof payload.value === 'number') {
+        hoverData[channel.id] = payload.value;
+      }
+    });
+
+    onHoverDataChange(Object.keys(hoverData).length > 0 ? hoverData : null);
+  }, [onHoverDataChange, channels]);
+
+  // 处理鼠标离开事件
+  const handleMouseLeave = React.useCallback(() => {
+    if (onHoverDataChange) {
+      onHoverDataChange(null);
+    }
+  }, [onHoverDataChange]);
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -146,7 +181,12 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
         
         <div style={{ width: '100%', height: '200px' }}>
           <ResponsiveContainer>
-            <LineChart data={channelData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <LineChart 
+              data={channelData} 
+              margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            >
               {displayConfig.showGrid && (
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
               )}
@@ -249,6 +289,8 @@ export default function TemperatureChart({ readings, displayConfig, channels }: 
           <LineChart 
             data={chartData} 
             margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
           >
             {displayConfig.showGrid && (
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />

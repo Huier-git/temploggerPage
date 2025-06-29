@@ -112,6 +112,9 @@ return registerValue * 0.1;`,
     reason: string;
   }>>([]);
 
+  // 新增：图表悬停数据状态
+  const [chartHoverData, setChartHoverData] = useState<{ [channelId: number]: number } | null>(null);
+
   const { readings, isReading, replaceReadings, clearReadings } = useTemperatureData(
     serialConfig, 
     recordingConfig, 
@@ -625,6 +628,7 @@ return registerValue * 0.1;`,
               displayConfig={displayConfig}
               channels={channels}
               language={language.current}
+              onHoverDataChange={setChartHoverData}
             />
           </div>
           <div>
@@ -632,6 +636,7 @@ return registerValue * 0.1;`,
               readings={readings}
               channels={channels}
               language={language.current}
+              hoverTemperatures={chartHoverData}
             />
           </div>
         </div>

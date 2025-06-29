@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TemperatureReading, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
-import { Thermometer, Move, RotateCcw, Eye, EyeOff } from 'lucide-react';
+import { Thermometer, Move, RotateCcw, Eye, EyeOff, MousePointer } from 'lucide-react';
 import { useTranslation } from '../utils/i18n';
 
 interface SensorPosition {
@@ -14,9 +14,15 @@ interface DrillVisualizationProps {
   readings: TemperatureReading[];
   channels: ChannelConfig[];
   language: 'zh' | 'en';
+  hoverTemperatures?: { [channelId: number]: number } | null; // 新增：来自图表悬停的温度数据
 }
 
-export default function DrillVisualization({ readings, channels, language }: DrillVisualizationProps) {
+export default function DrillVisualization({ 
+  readings, 
+  channels, 
+  language, 
+  hoverTemperatures 
+}: DrillVisualizationProps) {
   const { t } = useTranslation(language);
   
   // 获取启用的通道数量
@@ -41,6 +47,7 @@ export default function DrillVisualization({ readings, channels, language }: Dri
   const [draggedSensor, setDraggedSensor] = useState<number | null>(null);
   const [showTemperatureScale, setShowTemperatureScale] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
+  const [useHoverData, setUseHoverData] = useState(false); // 新增：是否使用悬停数据
   const drillRef = useRef<HTMLDivElement>(null);
 
   // 当启用通道变化时，重新计算传感器位置
@@ -69,8 +76,14 @@ export default function DrillVisualization({ readings, channels, language }: Dri
     }
   }, [channels]);
 
-  // Get latest temperature data
-  const getLatestTemperature = (channelId: number): number | null => {
+  // Get latest temperature data or hover data
+  const getTemperature = (channelId: number): number | null => {
+    // 如果启用了悬停数据模式且有悬停数据，优先使用悬停数据
+    if (useHoverData && hoverTemperatures && hoverTemperatures[channelId] !== undefined) {
+      return hoverTemperatures[channelId];
+    }
+    
+    // 否则使用最新的实际数据
     const channelReadings = readings
       .filter(r => r.channel === channelId)
       .sort((a, b) => b.timestamp - a.timestamp);
@@ -81,7 +94,7 @@ export default function DrillVisualization({ readings, channels, language }: Dri
   // Calculate temperature range for color mapping
   const getTemperatureRange = () => {
     const temperatures = enabledChannels
-      .map(channel => getLatestTemperature(channel.id))
+      .map(channel => getTemperature(channel.id))
       .filter(temp => temp !== null) as number[];
     
     if (temperatures.length === 0) return { min: 0, max: 50 };
@@ -165,7 +178,7 @@ export default function DrillVisualization({ readings, channels, language }: Dri
       if (!channel || !channel.enabled) return;
       
       if (isSensorIntersectingDrill(sensorPos)) {
-        const temperature = getLatestTemperature(channel.id);
+        const temperature = getTemperature(channel.id);
         if (temperature !== null) {
           const centerX = 50;
           const distanceFromCenter = Math.abs(sensorPos.x - centerX);
@@ -340,6 +353,25 @@ export default function DrillVisualization({ readings, channels, language }: Dri
         </div>
         
         <div className="flex items-center gap-2">
+          {/* 新增：图表悬停数据开关 */}
+          <button
+            onClick={() => setUseHoverData(!useHoverData)}
+            className={`flex items-center gap-1 p-1.5 rounded transition-colors ${
+              useHoverData 
+                ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+            }`}
+            title={useHoverData 
+              ? (language === 'zh' ? '使用图表悬停数据' : 'Using chart hover data')
+              : (language === 'zh' ? '使用实时数据' : 'Using real-time data')
+            }
+          >
+            <MousePointer className="w-4 h-4" />
+            {useHoverData && (
+              <div className="w-2 h-2 bg-blue-300 rounded-full animate-pulse"></div>
+            )}
+          </button>
+          
           <button
             onClick={() => setShowTemperatureScale(!showTemperatureScale)}
             className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
@@ -370,8 +402,36 @@ export default function DrillVisualization({ readings, channels, language }: Dri
         <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
           <Move className="w-3 h-3" />
           <span>{t('dragToAdjustPosition')}</span>
+          {useHoverData && (
+            <>
+              <span>•</span>
+              <MousePointer className="w-3 h-3" />
+              <span>{language === 'zh' ? '使用图表悬停温度' : 'Using chart hover temperatures'}</span>
+            </>
+          )}
         </div>
       </div>
+
+      {/* 悬停数据状态提示 */}
+      {useHoverData && (
+        <div className="mb-2 p-2 bg-blue-900 border border-blue-700 rounded-lg">
+          <div className="flex items-center gap-2 text-xs">
+            <MousePointer className="w-3 h-3 text-blue-400" />
+            <span className="text-blue-300">
+              {hoverTemperatures 
+                ? (language === 'zh' 
+                    ? `显示图表悬停数据 (${Object.keys(hoverTemperatures).length} 个通道)`
+                    : `Showing chart hover data (${Object.keys(hoverTemperatures).length} channels)`
+                  )
+                : (language === 'zh' 
+                    ? '将鼠标悬停在温度图表上查看对应温度分布'
+                    : 'Hover over temperature chart to see corresponding temperature distribution'
+                  )
+              }
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Main content - responsive layout */}
       <div className="flex-1 flex gap-4 min-h-0">
@@ -485,9 +545,10 @@ export default function DrillVisualization({ readings, channels, language }: Dri
                 const channel = enabledChannels.find(ch => ch.id === sensorPos.channelId);
                 if (!channel || !channel.enabled) return null;
                 
-                const temperature = getLatestTemperature(channel.id);
+                const temperature = getTemperature(channel.id);
                 const color = temperatureToColor(temperature);
                 const isIntersecting = isSensorIntersectingDrill(sensorPos);
+                const isHoverData = useHoverData && hoverTemperatures && hoverTemperatures[channel.id] !== undefined;
                 
                 return (
                   <div
@@ -496,13 +557,17 @@ export default function DrillVisualization({ readings, channels, language }: Dri
                       draggedSensor === sensorPos.channelId ? 'scale-125 z-10' : 'hover:scale-110'
                     } ${isIntersecting ? 'border-white' : 'border-gray-400'} ${
                       compactMode ? 'w-4 h-4 text-xs' : 'w-5 h-5 text-xs'
-                    }`}
+                    } ${isHoverData ? 'ring-2 ring-blue-400' : ''}`}
                     style={{
                       backgroundColor: color,
                       left: `${sensorPos.x}%`,
                       top: `${sensorPos.y}%`,
                       transition: draggedSensor === sensorPos.channelId ? 'none' : 'all 0.2s ease',
-                      boxShadow: isIntersecting ? '0 0 8px rgba(255,255,255,0.5)' : '0 2px 4px rgba(0,0,0,0.3)',
+                      boxShadow: isIntersecting 
+                        ? '0 0 8px rgba(255,255,255,0.5)' 
+                        : isHoverData 
+                          ? '0 0 8px rgba(59,130,246,0.5)'
+                          : '0 2px 4px rgba(0,0,0,0.3)',
                       fontSize: compactMode ? '8px' : '10px',
                       minWidth: '16px',
                       minHeight: '16px'
@@ -512,7 +577,7 @@ export default function DrillVisualization({ readings, channels, language }: Dri
                       e.preventDefault();
                       setDraggedSensor(sensorPos.channelId);
                     }}
-                    title={`${language === 'zh' ? '传感器' : 'Sensor'} ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : (language === 'zh' ? '无数据' : 'No Data')}${isIntersecting ? ` (${t('affectsDrillColor')})` : ''}`}
+                    title={`${language === 'zh' ? '传感器' : 'Sensor'} ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : (language === 'zh' ? '无数据' : 'No Data')}${isIntersecting ? ` (${t('affectsDrillColor')})` : ''}${isHoverData ? ` (${language === 'zh' ? '图表悬停数据' : 'Chart hover data'})` : ''}`}
                   >
                     {channel.id}
                   </div>
@@ -563,6 +628,11 @@ export default function DrillVisualization({ readings, channels, language }: Dri
                 <div className={`text-gray-400 ${compactMode ? 'text-xs' : 'text-xs'}`}>
                   {t('affecting')}: {intersectingTemperatures.length}/{enabledChannels.length}
                 </div>
+                {useHoverData && (
+                  <div className={`text-blue-400 ${compactMode ? 'text-xs' : 'text-xs'}`}>
+                    {language === 'zh' ? '悬停模式' : 'Hover Mode'}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -576,19 +646,26 @@ export default function DrillVisualization({ readings, channels, language }: Dri
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {enabledChannels.map(channel => {
                 const sensorPos = sensorPositions.find(pos => pos.channelId === channel.id);
-                const temperature = getLatestTemperature(channel.id);
+                const temperature = getTemperature(channel.id);
                 const color = temperatureToColor(temperature);
                 const isIntersecting = sensorPos ? isSensorIntersectingDrill(sensorPos) : false;
+                const isHoverData = useHoverData && hoverTemperatures && hoverTemperatures[channel.id] !== undefined;
                 
                 return (
                   <div key={channel.id} className="flex items-center gap-2">
                     <div
                       className={`rounded-full border flex items-center justify-center font-bold text-white flex-shrink-0 ${
                         isIntersecting ? 'border-white' : 'border-gray-400'
-                      } ${compactMode ? 'w-3 h-3 text-xs' : 'w-3 h-3 text-xs'}`}
+                      } ${compactMode ? 'w-3 h-3 text-xs' : 'w-3 h-3 text-xs'} ${
+                        isHoverData ? 'ring-1 ring-blue-400' : ''
+                      }`}
                       style={{ 
                         backgroundColor: color,
-                        boxShadow: isIntersecting ? '0 0 4px rgba(255,255,255,0.5)' : 'none',
+                        boxShadow: isIntersecting 
+                          ? '0 0 4px rgba(255,255,255,0.5)' 
+                          : isHoverData 
+                            ? '0 0 4px rgba(59,130,246,0.5)'
+                            : 'none',
                         fontSize: '7px',
                         minWidth: '12px',
                         minHeight: '12px'
@@ -600,6 +677,7 @@ export default function DrillVisualization({ readings, channels, language }: Dri
                     <div className="flex-1 min-w-0">
                       <div className={`text-gray-300 ${compactMode ? 'text-xs' : 'text-xs'}`}>
                         Ch{channel.id}
+                        {isHoverData && <span className="text-blue-400 ml-1">*</span>}
                       </div>
                       {!compactMode && (
                         <div className="text-xs text-gray-400 truncate">
