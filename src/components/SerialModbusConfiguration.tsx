@@ -10,7 +10,7 @@ interface SerialModbusConfigurationProps {
   onConnect: () => void;
   onDisconnect: () => void;
   language: 'zh' | 'en';
-  sessionActive: boolean; // 新增：会话活跃状态
+  sessionActive: boolean;
 }
 
 const BAUD_RATES = [9600, 19200, 38400, 57600, 115200];
@@ -26,43 +26,6 @@ const FUNCTION_CODES = [
   { code: 0x0F, name: 'Write Multiple Coils', description: 'Write multiple coils (0x)' },
   { code: 0x10, name: 'Write Multiple Registers', description: 'Write multiple registers (4x)' }
 ];
-
-// Modbus RTU CRC calculation
-function calculateCRC(buffer: Uint8Array): number {
-  let crc = 0xFFFF;
-  
-  for (let i = 0; i < buffer.length; i++) {
-    crc ^= buffer[i];
-    
-    for (let j = 0; j < 8; j++) {
-      if (crc & 0x0001) {
-        crc = (crc >> 1) ^ 0xA001;
-      } else {
-        crc = crc >> 1;
-      }
-    }
-  }
-  
-  return crc;
-}
-
-// Build Modbus RTU request frame
-function buildModbusFrame(slaveId: number, functionCode: number, startAddress: number, quantity: number): Uint8Array {
-  const frame = new Uint8Array(8);
-  
-  frame[0] = slaveId;
-  frame[1] = functionCode;
-  frame[2] = (startAddress >> 8) & 0xFF; // High byte
-  frame[3] = startAddress & 0xFF;        // Low byte
-  frame[4] = (quantity >> 8) & 0xFF;     // High byte
-  frame[5] = quantity & 0xFF;            // Low byte
-  
-  const crc = calculateCRC(frame.slice(0, 6));
-  frame[6] = crc & 0xFF;        // CRC low byte
-  frame[7] = (crc >> 8) & 0xFF; // CRC high byte
-  
-  return frame;
-}
 
 export default function SerialModbusConfiguration({
   config,
@@ -90,8 +53,8 @@ export default function SerialModbusConfiguration({
     slaveId: 1,
     retries: 3,
     timeout: 1000,
-    selectedFunctionCode: 0x03, // Default to Read Holding Registers
-    autoHandleOffsetAddress: false // 默认关闭偏移地址处理
+    selectedFunctionCode: 0x03,
+    autoHandleOffsetAddress: false
   });
   const [operationLog, setOperationLog] = useState<Array<{
     id: string;
@@ -108,7 +71,6 @@ export default function SerialModbusConfiguration({
   const isWebSerialSupported = 'serial' in navigator;
 
   const handleInputChange = (field: keyof SerialConfig, value: string | number) => {
-    // 会话活跃时不允许修改寄存器相关配置
     if (sessionActive && (field === 'registerCount' || field === 'startRegister' || field === 'offsetAddress')) {
       return;
     }
@@ -120,11 +82,10 @@ export default function SerialModbusConfiguration({
   };
 
   const handleCustomRegistersChange = (value: string) => {
-    if (sessionActive) return; // 会话活跃时不允许修改
+    if (sessionActive) return;
     
     setCustomRegisters(value);
     
-    // Parse register addresses
     const registers = value
       .split(';')
       .map(reg => reg.trim())
@@ -134,7 +95,6 @@ export default function SerialModbusConfiguration({
     
     setParsedRegisters(registers);
     
-    // Update configuration
     onConfigChange({
       ...config,
       customRegisters: registers.length > 0 ? registers : undefined
@@ -142,19 +102,17 @@ export default function SerialModbusConfiguration({
   };
 
   const handleUseCustomRegistersToggle = () => {
-    if (sessionActive) return; // 会话活跃时不允许修改
+    if (sessionActive) return;
     
     const newUseCustom = !useCustomRegisters;
     setUseCustomRegisters(newUseCustom);
     
     if (!newUseCustom) {
-      // Switch back to consecutive register mode
       onConfigChange({
         ...config,
         customRegisters: undefined
       });
     } else if (parsedRegisters.length > 0) {
-      // Switch to custom register mode
       onConfigChange({
         ...config,
         customRegisters: parsedRegisters
@@ -162,7 +120,6 @@ export default function SerialModbusConfiguration({
     }
   };
 
-  // Add operation log
   const addOperationLog = (type: 'read' | 'write', status: 'success' | 'error' | 'timeout', message: string) => {
     const newLog = {
       id: `${Date.now()}_${Math.random()}`,
@@ -172,12 +129,11 @@ export default function SerialModbusConfiguration({
       message
     };
     
-    setOperationLog(prev => [...prev.slice(-9), newLog]); // Keep last 10 records
+    setOperationLog(prev => [...prev.slice(-9), newLog]);
   };
 
   // WebSocket connection
   const handleWebSocketConnect = async () => {
-    // 显示确认对话框
     const confirmMessage = language === 'zh' 
       ? `确定要通过WebSocket连接到 ws://localhost:${websocketPort} 吗？\n\n请确保您已经运行了串口转WebSocket的后端程序。`
       : `Are you sure you want to connect via WebSocket to ws://localhost:${websocketPort}?\n\nPlease ensure you have the serial-to-WebSocket backend program running.`;
@@ -261,10 +217,8 @@ export default function SerialModbusConfiguration({
     setLastConnectionAttempt(Date.now());
 
     try {
-      // Request serial port
       const port = await navigator.serial.requestPort();
       
-      // Open serial port
       await port.open({
         baudRate: config.baudRate,
         dataBits: config.dataBits,
@@ -274,37 +228,30 @@ export default function SerialModbusConfiguration({
 
       setSerialPort(port);
       
-      // Get read/write streams
       if (port.readable && port.writable) {
         readerRef.current = port.readable.getReader();
         writerRef.current = port.writable.getWriter();
+        
+        // Store references globally for useTemperatureData hook
+        (window as any).__serialPort = port;
+        (window as any).__serialReader = readerRef.current;
+        (window as any).__serialWriter = writerRef.current;
       }
 
-      // Test Modbus communication
-      const testSuccess = await testModbusCommunication();
+      onConnect();
+      addOperationLog('read', 'success', `${language === 'zh' ? '成功连接到串口，波特率' : 'Successfully connected to serial port, baud rate'} ${config.baudRate}`);
       
-      if (testSuccess) {
-        onConnect();
-        addOperationLog('read', 'success', `${language === 'zh' ? '成功连接到串口，波特率' : 'Successfully connected to serial port, baud rate'} ${config.baudRate}`);
-        
-        // Start periodic reading
-        startPeriodicReading();
-        
-        if ('Notification' in window && Notification.permission === 'granted') {
-          new Notification(language === 'zh' ? '串口连接成功' : 'Serial Connection Successful', {
-            body: `${language === 'zh' ? '已连接到串口，波特率' : 'Connected to serial port, baud rate'} ${config.baudRate}`,
-            icon: '/favicon.ico'
-          });
-        }
-      } else {
-        throw new Error(language === 'zh' ? 'Modbus通信测试失败' : 'Modbus communication test failed');
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(language === 'zh' ? '串口连接成功' : 'Serial Connection Successful', {
+          body: `${language === 'zh' ? '已连接到串口，波特率' : 'Connected to serial port, baud rate'} ${config.baudRate}`,
+          icon: '/favicon.ico'
+        });
       }
       
     } catch (error) {
       console.error('Serial connection failed:', error);
       addOperationLog('read', 'error', `${language === 'zh' ? '连接失败' : 'Connection failed'}: ${(error as Error).message}`);
       
-      // Clean up resources
       await cleanupConnection();
       
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -318,68 +265,6 @@ export default function SerialModbusConfiguration({
     }
   };
 
-  // Test Modbus communication
-  const testModbusCommunication = async (): Promise<boolean> => {
-    if (!writerRef.current || !readerRef.current) return false;
-
-    try {
-      // Build Modbus frame to read holding registers (function code 0x03)
-      const startAddr = config.customRegisters ? config.customRegisters[0] : config.startRegister;
-      
-      // Handle offset address based on user preference and start register value
-      let actualAddr = startAddr;
-      if (modbusStats.autoHandleOffsetAddress && startAddr >= config.offsetAddress) {
-        actualAddr = startAddr - config.offsetAddress; // Remove offset
-      }
-      
-      const frame = buildModbusFrame(modbusStats.slaveId, modbusStats.selectedFunctionCode, actualAddr, config.registerCount);
-      
-      // Send request
-      await writerRef.current.write(frame);
-      addOperationLog('read', 'success', `${language === 'zh' ? '发送Modbus请求: 从站' : 'Sent Modbus request: Slave'} ${modbusStats.slaveId}, ${language === 'zh' ? '功能码' : 'Function'} ${modbusStats.selectedFunctionCode.toString(16).toUpperCase()}, ${language === 'zh' ? '地址' : 'Address'} ${startAddr}${modbusStats.autoHandleOffsetAddress && startAddr >= config.offsetAddress ? ` (${language === 'zh' ? '实际' : 'actual'}: ${actualAddr})` : ''}`);
-      
-      // Wait for response (simplified version, should have timeout handling in practice)
-      const response = await Promise.race([
-        readerRef.current.read(),
-        new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error(language === 'zh' ? '响应超时' : 'Response timeout')), modbusStats.timeout)
-        )
-      ]);
-      
-      if (response.value && response.value.length >= 5) {
-        // Simple response format validation
-        const responseFrame = response.value;
-        if (responseFrame[0] === modbusStats.slaveId && responseFrame[1] === modbusStats.selectedFunctionCode) {
-          setModbusStats(prev => ({
-            ...prev,
-            successCount: prev.successCount + 1,
-            lastTransaction: Date.now()
-          }));
-          addOperationLog('read', 'success', `${language === 'zh' ? '收到有效Modbus响应，数据长度' : 'Received valid Modbus response, data length'}: ${responseFrame.length}`);
-          return true;
-        }
-      }
-      
-      throw new Error(language === 'zh' ? '无效的Modbus响应' :  'Invalid Modbus response');
-      
-    } catch (error) {
-      setModbusStats(prev => ({
-        ...prev,
-        errorCount: prev.errorCount + 1
-      }));
-      addOperationLog('read', 'error', `${language === 'zh' ? 'Modbus通信失败' : 'Modbus communication failed'}: ${(error as Error).message}`);
-      return false;
-    }
-  };
-
-  // Start periodic temperature data reading
-  const startPeriodicReading = () => {
-    // Here you can implement periodic reading logic
-    // Since this is a demo, we just simulate successful connection state
-    console.log(language === 'zh' ? '开始定期读取温度数据...' : 'Starting periodic temperature data reading...');
-  };
-
-  // Clean up connection
   const cleanupConnection = async () => {
     try {
       if (readerRef.current) {
@@ -402,6 +287,11 @@ export default function SerialModbusConfiguration({
         websocket.close();
         setWebsocket(null);
       }
+      
+      // Clear global references
+      (window as any).__serialPort = null;
+      (window as any).__serialReader = null;
+      (window as any).__serialWriter = null;
     } catch (error) {
       console.error('Error during connection cleanup:', error);
     }
@@ -428,14 +318,12 @@ export default function SerialModbusConfiguration({
     }
   };
 
-  // Request notification permission on component mount
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
 
-  // Clean up connection on component unmount
   useEffect(() => {
     return () => {
       cleanupConnection();
@@ -476,7 +364,6 @@ export default function SerialModbusConfiguration({
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Connection mode selector */}
           <div className="flex items-center gap-2">
             <select
               value={connectionMode}
@@ -489,7 +376,6 @@ export default function SerialModbusConfiguration({
             </select>
           </div>
 
-          {/* WebSocket port input */}
           {connectionMode === 'websocket' && (
             <div className="flex items-center gap-2">
               <Globe className="w-4 h-4 text-blue-400" />
@@ -506,7 +392,6 @@ export default function SerialModbusConfiguration({
             </div>
           )}
           
-          {/* Connection status indicator */}
           <div className={`flex items-center gap-3 px-4 py-2 rounded-lg border ${getConnectionStatusColor()}`}>
             {getConnectionStatusIcon()}
             <div className="flex flex-col">
