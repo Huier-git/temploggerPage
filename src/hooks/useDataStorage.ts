@@ -185,6 +185,7 @@ export function useDataStorage() {
     }
   }, []);
 
+  // 增强的CSV导入功能 - 支持校准数据
   const importFromCSV = useCallback((file: File): Promise<TemperatureReading[]> => {
     return new Promise((resolve, reject) => {
       if (!file) {
@@ -215,12 +216,15 @@ export function useDataStorage() {
           const lines = csv.split('\n').map(line => line.trim()).filter(line => line);
           const readings: TemperatureReading[] = [];
           let dataStartIndex = 0;
+          let hasCalibrationColumn = false;
           
-          // 查找数据开始行 - 支持简化的CSV格式
+          // 查找数据开始行并检测是否有校准列
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i].toLowerCase();
             if ((line.includes('timestamp') || line.includes('时间戳')) && line.includes(',')) {
               dataStartIndex = i + 1;
+              // 检测是否有校准温度列
+              hasCalibrationColumn = line.includes('calibrated_temperature') || line.includes('校准温度');
               break;
             }
           }
@@ -245,9 +249,18 @@ export function useDataStorage() {
             }
             
             // 支持不同的CSV格式
-            let timestamp: number, channel: number, temperature: number, rawValue: number = 0;
+            let timestamp: number, channel: number, temperature: number, calibratedTemperature: number | undefined, rawValue: number = 0;
             
-            if (columns.length >= 4) {
+            if (hasCalibrationColumn && columns.length >= 5) {
+              // 包含校准温度的格式: Timestamp,Channel,Temperature,Calibrated_Temperature,RawValue
+              [timestamp, channel, temperature, calibratedTemperature, rawValue] = [
+                parseInt(columns[0]),
+                parseInt(columns[1]),
+                parseFloat(columns[2]),
+                parseFloat(columns[3]),
+                parseInt(columns[4]) || 0
+              ];
+            } else if (columns.length >= 4) {
               // 标准格式: Timestamp,Channel,Temperature,RawValue
               [timestamp, channel, temperature, rawValue] = [
                 parseInt(columns[0]),
@@ -264,19 +277,26 @@ export function useDataStorage() {
               ];
             }
             
-            // 验证数据有效性 - 移除温度范围限制
+            // 验证数据有效性
             if (isNaN(timestamp) || isNaN(channel) || isNaN(temperature) ||
                 channel < 1 || channel > 16) {
               invalidCount++;
               continue;
             }
             
-            readings.push({
+            const reading: TemperatureReading = {
               timestamp,
               channel,
               temperature,
               rawValue: isNaN(rawValue) ? Math.round(temperature * 10) : rawValue
-            });
+            };
+            
+            // 如果有校准温度数据，添加到读数中
+            if (calibratedTemperature !== undefined && !isNaN(calibratedTemperature)) {
+              reading.calibratedTemperature = calibratedTemperature;
+            }
+            
+            readings.push(reading);
             validCount++;
           }
           
@@ -288,7 +308,7 @@ export function useDataStorage() {
           // 按时间戳排序
           readings.sort((a, b) => a.timestamp - b.timestamp);
           
-          console.log(`CSV导入完成: ${validCount} 条有效数据, ${invalidCount} 条无效数据`);
+          console.log(`CSV导入完成: ${validCount} 条有效数据, ${invalidCount} 条无效数据${hasCalibrationColumn ? ', 包含校准数据' : ''}`);
           resolve(readings);
         } catch (error) {
           reject(new Error(`CSV解析失败: ${error instanceof Error ? error.message : '未知错误'}`));

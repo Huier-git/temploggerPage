@@ -8,10 +8,11 @@ import DisplayControls from './components/DisplayControls';
 import TestModeControls from './components/TestModeControls';
 import DrillVisualization from './components/DrillVisualization';
 import TemperatureConversionConfig from './components/TemperatureConversionConfig';
+import TemperatureCalibration from './components/TemperatureCalibration';
 import RawDataDisplay from './components/RawDataDisplay';
 import { useTemperatureData } from './hooks/useTemperatureData';
 import { useDataStorage } from './hooks/useDataStorage';
-import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig } from './types';
+import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig, CalibrationConfig } from './types';
 import { useTranslation } from './utils/i18n';
 import { generateDynamicColors } from './utils/colorGenerator';
 
@@ -80,6 +81,13 @@ if (registerValue > 32767) {
 }
 return registerValue * 0.1;`,
     testValue: 250
+  });
+
+  // 新增：校准配置
+  const [calibrationConfig, setCalibrationConfig] = useState<CalibrationConfig>({
+    enabled: false,
+    offsets: new Array(16).fill(0),
+    appliedToData: false
   });
 
   const [channels, setChannels] = useState<ChannelConfig[]>(() => {
@@ -310,14 +318,35 @@ return registerValue * 0.1;`,
     }
   };
 
+  // 修改：增强的CSV导入处理，自动可视化
   const handleImportData = async (file: File) => {
     try {
       const importedReadings = await importFromCSV(file);
+      
+      // 自动替换当前数据并可视化
       replaceReadings(importedReadings);
       setSessionEvents([]);
-      alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
+      
+      // 重置校准状态
+      setCalibrationConfig(prev => ({
+        ...prev,
+        appliedToData: false
+      }));
+      
+      // 自动调整显示配置以最佳显示导入的数据
+      if (importedReadings.length > 0) {
+        setDisplayConfig(prev => ({
+          ...prev,
+          mode: 'full', // 显示全部数据
+          viewMode: 'combined' // 使用综合视图
+        }));
+      }
+      
+      console.log(`Successfully imported and visualized ${importedReadings.length} temperature readings`);
+      
     } catch (error) {
-      alert(t('importFailed') + ': ' + (error as Error).message);
+      console.error('Import failed:', error);
+      throw error; // 重新抛出错误让DisplayControls处理
     }
   };
 
@@ -346,6 +375,12 @@ return registerValue * 0.1;`,
       enabled: false
     }));
 
+    // 重置校准状态
+    setCalibrationConfig(prev => ({
+      ...prev,
+      appliedToData: false
+    }));
+
     setSessionEvents([{
       timestamp: Date.now(),
       action: 'start',
@@ -367,6 +402,10 @@ return registerValue * 0.1;`,
       : 'Are you sure you want to clear all data in current session? This operation cannot be undone.'
     )) {
       clearReadings();
+      setCalibrationConfig(prev => ({
+        ...prev,
+        appliedToData: false
+      }));
       setSessionEvents(prev => [...prev, {
         timestamp: Date.now(),
         action: 'stop',
@@ -401,10 +440,25 @@ return registerValue * 0.1;`,
 
   // 清理原始数据的处理函数
   const handleClearRawData = () => {
-    // 这里可以添加清理原始数据的逻辑
-    // 由于原始数据是在 useTemperatureData hook 中管理的，
-    // 我们可以通过清理所有数据来实现
     handleClearCurrentData();
+  };
+
+  // 新增：应用校准到数据
+  const handleApplyCalibration = () => {
+    if (readings.length === 0) {
+      return;
+    }
+
+    // 应用校准偏移值到所有数据
+    const calibratedReadings = readings.map(reading => ({
+      ...reading,
+      calibratedTemperature: reading.temperature + (calibrationConfig.offsets[reading.channel - 1] || 0)
+    }));
+
+    // 替换当前数据
+    replaceReadings(calibratedReadings);
+    
+    console.log(`Applied calibration to ${calibratedReadings.length} temperature readings`);
   };
 
   useEffect(() => {
@@ -652,6 +706,15 @@ return registerValue * 0.1;`,
           rawDataReadings={rawDataReadings}
           language={language.current}
           onClearRawData={handleClearRawData}
+        />
+
+        <TemperatureCalibration
+          config={calibrationConfig}
+          onConfigChange={setCalibrationConfig}
+          onApplyCalibration={handleApplyCalibration}
+          channelCount={serialConfig.registerCount}
+          language={language.current}
+          hasData={readings.length > 0}
         />
 
         <TemperatureConversionConfig

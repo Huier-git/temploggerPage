@@ -178,12 +178,23 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   
   csvContent += '#\n';
   
-  // Add column headers in English
-  csvContent += 'Timestamp,Channel,Temperature_C,Raw_Value\n';
+  // 检查是否有校准数据
+  const hasCalibrationData = readings.some(reading => reading.calibratedTemperature !== undefined);
   
-  // Add data rows
+  // Add column headers in English - 包含校准温度列
+  if (hasCalibrationData) {
+    csvContent += 'Timestamp,Channel,Temperature_C,Calibrated_Temperature_C,Raw_Value\n';
+  } else {
+    csvContent += 'Timestamp,Channel,Temperature_C,Raw_Value\n';
+  }
+  
+  // Add data rows - 包含校准温度数据
   readings.forEach(reading => {
-    csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${reading.rawValue}\n`;
+    if (hasCalibrationData) {
+      csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${(reading.calibratedTemperature || reading.temperature).toFixed(1)},${reading.rawValue}\n`;
+    } else {
+      csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${reading.rawValue}\n`;
+    }
   });
   
   // Generate smart filename in English
@@ -207,6 +218,11 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
     const pauseCount = metadata.sessionInfo.pauseResumeEvents.filter(e => e.action === 'pause').length;
     filename += `_${pauseCount}pauses`;
+  }
+  
+  // Add calibration info to filename
+  if (hasCalibrationData) {
+    filename += '_calibrated';
   }
   
   filename += '.csv';

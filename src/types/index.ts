@@ -15,6 +15,7 @@ export interface TemperatureReading {
   channel: number;
   temperature: number;
   rawValue: number;
+  calibratedTemperature?: number; // 新增：校准后的温度值
 }
 
 export interface RecordingConfig {
@@ -76,6 +77,13 @@ export interface TemperatureConversionConfig {
   mode: 'builtin' | 'custom';
   customFormula: string;
   testValue: number;
+}
+
+// 新增：校准配置
+export interface CalibrationConfig {
+  enabled: boolean;
+  offsets: number[]; // 每个通道的校准偏移值
+  appliedToData: boolean; // 是否已应用到数据
 }
 
 // 新增：语言配置

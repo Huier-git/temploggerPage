@@ -56,12 +56,27 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
     });
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && onImportData) {
-      onImportData(file);
-      // 清空文件输入，允许重复选择同一文件
-      event.target.value = '';
+      try {
+        await onImportData(file);
+        // 清空文件输入，允许重复选择同一文件
+        event.target.value = '';
+        
+        // 显示成功提示
+        alert(language === 'zh' 
+          ? `成功导入CSV文件并自动可视化！文件: ${file.name}`
+          : `Successfully imported CSV file and auto-visualized! File: ${file.name}`
+        );
+      } catch (error) {
+        console.error('CSV import failed:', error);
+        alert(language === 'zh' 
+          ? `导入失败: ${(error as Error).message}`
+          : `Import failed: ${(error as Error).message}`
+        );
+        event.target.value = '';
+      }
     }
   };
 
@@ -204,7 +219,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
           </div>
         </div>
 
-        {/* CSV导入功能 */}
+        {/* CSV导入功能 - 增强版 */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             {t('dataImport')}
@@ -226,7 +241,10 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
           />
           
           <div className="text-xs text-gray-400 mt-1">
-            {t('supportImportingCSV')}
+            {language === 'zh' 
+              ? '导入CSV文件后将自动可视化数据并替换当前显示内容'
+              : 'CSV files will be automatically visualized and replace current display after import'
+            }
           </div>
         </div>
       </div>
