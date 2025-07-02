@@ -15,16 +15,20 @@ export interface ExportData {
       pauseResumeEvents: Array<{
         timestamp: string;
         action: 'pause' | 'resume';
-        duration?: number; // pause duration in seconds
-        reason?: string; // reason for pause/resume
+        duration?: number;
+        reason?: string;
       }>;
-      totalActiveDuration: number; // total active recording time in seconds
-      totalPauseDuration: number; // total pause time in seconds
+      totalActiveDuration: number;
+      totalPauseDuration: number;
+    };
+    calibrationInfo?: {
+      hasCalibrationData: boolean;
+      calibratedChannels: number[];
+      calibrationAppliedAt?: string;
     };
   };
 }
 
-// Process session events to generate accurate pause/resume information
 function processSessionEvents(sessionEvents: Array<{
   timestamp: number;
   action: 'start' | 'pause' | 'resume' | 'stop';
@@ -68,12 +72,10 @@ function processSessionEvents(sessionEvents: Array<{
       case 'resume':
         lastActiveStart = event.timestamp;
         if (event.action === 'resume') {
-          // Calculate pause duration
           if (lastPauseStart > 0) {
             const pauseDuration = Math.round((event.timestamp - lastPauseStart) / 1000);
             totalPauseDuration += pauseDuration;
             
-            // Update the last pause event with duration
             const lastPauseEvent = events[events.length - 1];
             if (lastPauseEvent && lastPauseEvent.action === 'pause') {
               lastPauseEvent.duration = pauseDuration;
@@ -107,7 +109,6 @@ function processSessionEvents(sessionEvents: Array<{
     }
   }
 
-  // Handle case where session is still active
   const lastEvent = sessionEvents[sessionEvents.length - 1];
   if (lastEvent.action === 'start' || lastEvent.action === 'resume') {
     const now = Date.now();
@@ -127,7 +128,7 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   
   let csvContent = '';
   
-  // Add metadata header in English
+  // Add metadata header
   csvContent += '# Temperature Monitoring Data Export\n';
   csvContent += `# Export Date: ${metadata.exportDate}\n`;
   csvContent += `# Device Port: ${metadata.deviceInfo.port || 'N/A'}\n`;
@@ -144,6 +145,17 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   csvContent += `# Total Records: ${metadata.totalReadings}\n`;
   csvContent += `# Time Range: ${metadata.timeRange.start} to ${metadata.timeRange.end}\n`;
   
+  // Add calibration information
+  if (metadata.calibrationInfo?.hasCalibrationData) {
+    csvContent += '#\n';
+    csvContent += '# Calibration Information:\n';
+    csvContent += `# Calibrated Channels: ${metadata.calibrationInfo.calibratedChannels.join(', ')}\n`;
+    if (metadata.calibrationInfo.calibrationAppliedAt) {
+      csvContent += `# Calibration Applied At: ${metadata.calibrationInfo.calibrationAppliedAt}\n`;
+    }
+    csvContent += '# Note: Both original and calibrated temperature values are included\n';
+  }
+  
   // Add session information
   if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
     csvContent += '#\n';
@@ -152,7 +164,7 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
     csvContent += `# Total Pause Duration: ${Math.round(metadata.sessionInfo.totalPauseDuration)} seconds\n`;
     csvContent += `# Number of Pause/Resume Events: ${metadata.sessionInfo.pauseResumeEvents.length}\n`;
     csvContent += '#\n';
-    csvContent += '# Pause/Resume Events (User Actions Only):\n';
+    csvContent += '# Pause/Resume Events:\n';
     
     metadata.sessionInfo.pauseResumeEvents.forEach((event, index) => {
       if (event.action === 'pause') {
@@ -181,30 +193,32 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   // 检查是否有校准数据
   const hasCalibrationData = readings.some(reading => reading.calibratedTemperature !== undefined);
   
-  // Add column headers in English - 包含校准温度列
+  // Add column headers
   if (hasCalibrationData) {
-    csvContent += 'Timestamp,Channel,Temperature_C,Calibrated_Temperature_C,Raw_Value\n';
+    csvContent += 'Timestamp,Channel,Temperature_C,Raw_Value,Calibrated_Temperature_C\n';
   } else {
     csvContent += 'Timestamp,Channel,Temperature_C,Raw_Value\n';
   }
   
-  // Add data rows - 包含校准温度数据
+  // Add data rows
   readings.forEach(reading => {
     if (hasCalibrationData) {
-      csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${(reading.calibratedTemperature || reading.temperature).toFixed(1)},${reading.rawValue}\n`;
+      const calibratedTemp = reading.calibratedTemperature !== undefined 
+        ? reading.calibratedTemperature.toFixed(1) 
+        : reading.temperature.toFixed(1);
+      csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${reading.rawValue},${calibratedTemp}\n`;
     } else {
       csvContent += `${reading.timestamp},${reading.channel},${reading.temperature.toFixed(1)},${reading.rawValue}\n`;
     }
   });
   
-  // Generate smart filename in English
+  // Generate filename
   const now = new Date();
   const dateStr = now.toISOString().split('T')[0];
   const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
   
   let filename = `${prefix}temperature_data_${dateStr}_${timeStr}`;
   
-  // Generate descriptive filename based on configuration
   if (metadata.deviceInfo.customRegisters && metadata.deviceInfo.customRegisters.length > 0) {
     filename += `_custom_registers_${metadata.deviceInfo.customRegisters.length}`;
   } else {
@@ -214,13 +228,12 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   filename += `_${(1 / metadata.recordingConfig.interval).toFixed(1)}Hz`;
   filename += `_${metadata.totalReadings}records`;
   
-  // Add session info to filename if there were pauses
   if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
     const pauseCount = metadata.sessionInfo.pauseResumeEvents.filter(e => e.action === 'pause').length;
     filename += `_${pauseCount}pauses`;
   }
   
-  // Add calibration info to filename
+  // 如果有校准数据，在文件名中标注
   if (hasCalibrationData) {
     filename += '_calibrated';
   }
@@ -240,7 +253,6 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   link.click();
   document.body.removeChild(link);
   
-  // Clean up URL object
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
@@ -257,6 +269,15 @@ export function prepareExportData(
   const sortedReadings = readings.sort((a, b) => a.timestamp - b.timestamp);
   const sessionInfo = processSessionEvents(sessionEvents);
   
+  // 检查校准信息
+  const hasCalibrationData = sortedReadings.some(reading => reading.calibratedTemperature !== undefined);
+  const calibratedChannels = hasCalibrationData 
+    ? [...new Set(sortedReadings
+        .filter(reading => reading.calibratedTemperature !== undefined)
+        .map(reading => reading.channel)
+      )].sort((a, b) => a - b)
+    : [];
+  
   return {
     readings: sortedReadings,
     metadata: {
@@ -268,7 +289,12 @@ export function prepareExportData(
         start: sortedReadings.length > 0 ? new Date(sortedReadings[0].timestamp).toISOString() : '',
         end: sortedReadings.length > 0 ? new Date(sortedReadings[sortedReadings.length - 1].timestamp).toISOString() : ''
       },
-      sessionInfo
+      sessionInfo,
+      calibrationInfo: {
+        hasCalibrationData,
+        calibratedChannels,
+        calibrationAppliedAt: hasCalibrationData ? new Date().toISOString() : undefined
+      }
     }
   };
 }

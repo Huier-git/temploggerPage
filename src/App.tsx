@@ -8,11 +8,11 @@ import DisplayControls from './components/DisplayControls';
 import TestModeControls from './components/TestModeControls';
 import DrillVisualization from './components/DrillVisualization';
 import TemperatureConversionConfig from './components/TemperatureConversionConfig';
-import TemperatureCalibration from './components/TemperatureCalibration';
 import RawDataDisplay from './components/RawDataDisplay';
+import TemperatureCalibration from './components/TemperatureCalibration';
 import { useTemperatureData } from './hooks/useTemperatureData';
 import { useDataStorage } from './hooks/useDataStorage';
-import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig, CalibrationConfig } from './types';
+import { SerialConfig, ConnectionStatus, RecordingConfig, DisplayConfig, ChannelConfig, TestModeConfig, TemperatureConversionConfig as TemperatureConversionConfigType, LanguageConfig, CalibrationOffset } from './types';
 import { useTranslation } from './utils/i18n';
 import { generateDynamicColors } from './utils/colorGenerator';
 
@@ -59,7 +59,8 @@ function App() {
     timeWindow: 10,
     showGrid: true,
     showLegend: true,
-    relativeTime: true
+    relativeTime: true,
+    showCalibratedData: false
   });
 
   const [testModeConfig, setTestModeConfig] = useState<TestModeConfig>({
@@ -83,12 +84,8 @@ return registerValue * 0.1;`,
     testValue: 250
   });
 
-  // 新增：校准配置
-  const [calibrationConfig, setCalibrationConfig] = useState<CalibrationConfig>({
-    enabled: false,
-    offsets: new Array(16).fill(0),
-    appliedToData: false
-  });
+  // 新增：校准偏移值状态
+  const [calibrationOffsets, setCalibrationOffsets] = useState<CalibrationOffset[]>([]);
 
   const [channels, setChannels] = useState<ChannelConfig[]>(() => {
     const colorScheme = generateDynamicColors(16, {
@@ -116,12 +113,14 @@ return registerValue * 0.1;`,
   }>>([]);
   const [chartHoverData, setChartHoverData] = useState<{ [channelId: number]: number } | null>(null);
 
+  // 修改：传递校准偏移值给数据采集hook
   const { readings, rawDataReadings, isReading, replaceReadings, clearReadings } = useTemperatureData(
     serialConfig, 
     recordingConfig, 
     connectionStatus,
     testModeConfig,
-    temperatureConversionConfig
+    temperatureConversionConfig,
+    calibrationOffsets // 传递校准偏移值
   );
 
   const {
@@ -132,6 +131,9 @@ return registerValue * 0.1;`,
     importFromCSV,
     clearSavedData
   } = useDataStorage();
+
+  // 检查是否有校准数据
+  const hasCalibrationData = readings.some(reading => reading.calibratedTemperature !== undefined);
 
   const toggleLanguage = () => {
     const newLang = language.current === 'zh' ? 'en' : 'zh';
@@ -318,35 +320,26 @@ return registerValue * 0.1;`,
     }
   };
 
-  // 修改：增强的CSV导入处理，自动可视化
   const handleImportData = async (file: File) => {
     try {
       const importedReadings = await importFromCSV(file);
-      
-      // 自动替换当前数据并可视化
       replaceReadings(importedReadings);
       setSessionEvents([]);
       
-      // 重置校准状态
-      setCalibrationConfig(prev => ({
-        ...prev,
-        appliedToData: false
-      }));
-      
-      // 自动调整显示配置以最佳显示导入的数据
-      if (importedReadings.length > 0) {
+      // 检查导入的数据是否包含校准信息
+      const hasImportedCalibration = importedReadings.some(reading => reading.calibratedTemperature !== undefined);
+      if (hasImportedCalibration) {
+        // 如果导入的数据包含校准信息，自动启用校准数据显示
         setDisplayConfig(prev => ({
           ...prev,
-          mode: 'full', // 显示全部数据
-          viewMode: 'combined' // 使用综合视图
+          showCalibratedData: true
         }));
+        alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')} (${language.current === 'zh' ? '包含校准数据' : 'including calibration data'})`);
+      } else {
+        alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
       }
-      
-      console.log(`Successfully imported and visualized ${importedReadings.length} temperature readings`);
-      
     } catch (error) {
-      console.error('Import failed:', error);
-      throw error; // 重新抛出错误让DisplayControls处理
+      alert(t('importFailed') + ': ' + (error as Error).message);
     }
   };
 
@@ -375,10 +368,13 @@ return registerValue * 0.1;`,
       enabled: false
     }));
 
-    // 重置校准状态
-    setCalibrationConfig(prev => ({
+    // 重置校准偏移值
+    setCalibrationOffsets([]);
+
+    // 重置显示配置中的校准数据显示
+    setDisplayConfig(prev => ({
       ...prev,
-      appliedToData: false
+      showCalibratedData: false
     }));
 
     setSessionEvents([{
@@ -402,10 +398,16 @@ return registerValue * 0.1;`,
       : 'Are you sure you want to clear all data in current session? This operation cannot be undone.'
     )) {
       clearReadings();
-      setCalibrationConfig(prev => ({
+      
+      // 重置校准偏移值
+      setCalibrationOffsets([]);
+      
+      // 重置显示配置中的校准数据显示
+      setDisplayConfig(prev => ({
         ...prev,
-        appliedToData: false
+        showCalibratedData: false
       }));
+      
       setSessionEvents(prev => [...prev, {
         timestamp: Date.now(),
         action: 'stop',
@@ -438,27 +440,52 @@ return registerValue * 0.1;`,
     }
   };
 
-  // 清理原始数据的处理函数
   const handleClearRawData = () => {
     handleClearCurrentData();
   };
 
-  // 新增：应用校准到数据
-  const handleApplyCalibration = () => {
+  // 修复：处理温度校准 - 完全重写校准逻辑
+  const handleApplyCalibration = async (offsets: CalibrationOffset[]) => {
     if (readings.length === 0) {
-      return;
+      throw new Error(language.current === 'zh' ? '没有数据可以校准' : 'No data to calibrate');
     }
 
-    // 应用校准偏移值到所有数据
-    const calibratedReadings = readings.map(reading => ({
-      ...reading,
-      calibratedTemperature: reading.temperature + (calibrationConfig.offsets[reading.channel - 1] || 0)
-    }));
+    console.log('开始应用校准，当前数据量:', readings.length);
+    console.log('校准偏移值:', offsets);
 
-    // 替换当前数据
+    // 保存校准偏移值到状态，这样新数据也会自动应用校准
+    setCalibrationOffsets(offsets);
+
+    // 应用校准到所有现有读数
+    const calibratedReadings = readings.map(reading => {
+      const offset = offsets.find(o => o.channelId === reading.channel && o.enabled);
+      
+      if (offset) {
+        // 为启用校准的通道添加校准温度
+        return {
+          ...reading,
+          calibratedTemperature: reading.temperature + offset.offset
+        };
+      } else {
+        // 对于未启用校准的通道，移除校准温度（如果之前有的话）
+        const { calibratedTemperature, ...readingWithoutCalibration } = reading;
+        return readingWithoutCalibration;
+      }
+    });
+
+    console.log('校准后数据量:', calibratedReadings.length);
+    console.log('校准后样本数据:', calibratedReadings.slice(0, 3));
+
+    // 替换当前读数 - 这不会影响新数据的生成
     replaceReadings(calibratedReadings);
     
-    console.log(`Applied calibration to ${calibratedReadings.length} temperature readings`);
+    // 自动启用校准数据显示
+    setDisplayConfig(prev => ({
+      ...prev,
+      showCalibratedData: true
+    }));
+
+    console.log(`校准应用成功，影响 ${offsets.filter(o => o.enabled).length} 个通道，处理了 ${calibratedReadings.length} 条历史记录`);
   };
 
   useEffect(() => {
@@ -674,6 +701,7 @@ return registerValue * 0.1;`,
             onConfigChange={setDisplayConfig}
             onImportData={handleImportData}
             language={language.current}
+            hasCalibrationData={hasCalibrationData}
           />
           
           <div className="lg:col-span-2">
@@ -692,6 +720,14 @@ return registerValue * 0.1;`,
           </div>
         </div>
 
+        {/* 温度校准与预处理组件 */}
+        <TemperatureCalibration
+          channels={channels}
+          onApplyCalibration={handleApplyCalibration}
+          language={language.current}
+          maxChannels={serialConfig.registerCount}
+        />
+
         <SerialModbusConfiguration
           config={serialConfig}
           connectionStatus={connectionStatus}
@@ -706,15 +742,6 @@ return registerValue * 0.1;`,
           rawDataReadings={rawDataReadings}
           language={language.current}
           onClearRawData={handleClearRawData}
-        />
-
-        <TemperatureCalibration
-          config={calibrationConfig}
-          onConfigChange={setCalibrationConfig}
-          onApplyCalibration={handleApplyCalibration}
-          channelCount={serialConfig.registerCount}
-          language={language.current}
-          hasData={readings.length > 0}
         />
 
         <TemperatureConversionConfig

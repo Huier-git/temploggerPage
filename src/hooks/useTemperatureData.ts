@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TemperatureReading, SerialConfig, ConnectionStatus, RecordingConfig, TestModeConfig, TemperatureConversionConfig } from '../types';
+import { TemperatureReading, SerialConfig, ConnectionStatus, RecordingConfig, TestModeConfig, TemperatureConversionConfig, CalibrationOffset } from '../types';
 import { isValidTemperature, convertRawToTemperature } from '../utils/temperatureProcessor';
 import { useTestMode } from './useTestMode';
 
@@ -22,7 +22,8 @@ export function useTemperatureData(
   recordingConfig: RecordingConfig,
   connectionStatus: ConnectionStatus,
   testModeConfig: TestModeConfig,
-  temperatureConversionConfig: TemperatureConversionConfig
+  temperatureConversionConfig: TemperatureConversionConfig,
+  calibrationOffsets: CalibrationOffset[] = [] // 新增：校准偏移值参数
 ) {
   const [readings, setReadings] = useState<TemperatureReading[]>([]);
   const [rawDataReadings, setRawDataReadings] = useState<RawDataReading[]>([]);
@@ -32,6 +33,20 @@ export function useTemperatureData(
   const serialPortRef = useRef<SerialPort | null>(null);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const writerRef = useRef<WritableStreamDefaultWriter<Uint8Array> | null>(null);
+
+  // 新增：应用校准偏移值的函数
+  const applyCalibrationToReading = useCallback((reading: TemperatureReading): TemperatureReading => {
+    const offset = calibrationOffsets.find(o => o.channelId === reading.channel && o.enabled);
+    
+    if (offset) {
+      return {
+        ...reading,
+        calibratedTemperature: reading.temperature + offset.offset
+      };
+    }
+    
+    return reading;
+  }, [calibrationOffsets]);
 
   // Memory optimization: auto cleanup old data
   const optimizeMemory = useCallback((currentReadings: TemperatureReading[]) => {
@@ -55,12 +70,15 @@ export function useTemperatureData(
     return currentRawData;
   }, []);
 
+  // 修改：添加读数时自动应用校准
   const addReading = useCallback((reading: TemperatureReading) => {
+    const calibratedReading = applyCalibrationToReading(reading);
+    
     setReadings(prev => {
-      const newReadings = [...prev, reading];
+      const newReadings = [...prev, calibratedReading];
       return optimizeMemory(newReadings);
     });
-  }, [optimizeMemory]);
+  }, [optimizeMemory, applyCalibrationToReading]);
 
   const addRawDataReading = useCallback((rawReading: RawDataReading) => {
     setRawDataReadings(prev => {
@@ -69,12 +87,15 @@ export function useTemperatureData(
     });
   }, [optimizeRawDataMemory]);
 
+  // 修改：批量添加读数时自动应用校准
   const addMultipleReadings = useCallback((newReadings: TemperatureReading[]) => {
+    const calibratedReadings = newReadings.map(reading => applyCalibrationToReading(reading));
+    
     setReadings(prev => {
-      const combined = [...prev, ...newReadings];
+      const combined = [...prev, ...calibratedReadings];
       return optimizeMemory(combined);
     });
-  }, [optimizeMemory]);
+  }, [optimizeMemory, applyCalibrationToReading]);
 
   const addMultipleRawDataReadings = useCallback((newRawReadings: RawDataReading[]) => {
     setRawDataReadings(prev => {
@@ -192,7 +213,7 @@ export function useTemperatureData(
     }
   }, [connectionStatus.isConnected]);
 
-  // Test mode data generation - test mode does NOT go through temperature conversion
+  // Test mode data generation - 修改：确保测试模式数据也应用校准
   useEffect(() => {
     if (!testModeConfig.enabled) return;
 
@@ -208,6 +229,7 @@ export function useTemperatureData(
         );
         
         if (filteredReadings.length > 0) {
+          // 测试模式生成的数据也会自动应用校准
           addMultipleReadings(filteredReadings);
           
           // Generate corresponding raw data for test mode
@@ -229,7 +251,7 @@ export function useTemperatureData(
     return () => clearInterval(interval);
   }, [testModeConfig, recordingConfig.selectedChannels, recordingConfig.interval, generateTestReading, addMultipleReadings, addMultipleRawDataReadings, serialConfig.startRegister]);
 
-  // Real device data reading (only when not in test mode)
+  // Real device data reading (only when not in test mode) - 修改：确保真实数据也应用校准
   const readTemperatureData = useCallback(async () => {
     if (testModeConfig.enabled || !connectionStatus.isConnected || !recordingConfig.isRecording) {
       return;
@@ -318,6 +340,7 @@ export function useTemperatureData(
             });
             
             if (newReadings.length > 0) {
+              // 真实设备数据也会自动应用校准
               addMultipleReadings(newReadings);
               addMultipleRawDataReadings(newRawData);
               console.log(`Added ${newReadings.length} new temperature readings`);

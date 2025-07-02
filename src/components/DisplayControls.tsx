@@ -1,5 +1,5 @@
 import React from 'react';
-import { Monitor, Clock, Grid, Eye, BarChart3, TrendingUp, Upload } from 'lucide-react';
+import { Monitor, Clock, Grid, Eye, BarChart3, TrendingUp, Upload, Zap } from 'lucide-react';
 import { DisplayConfig } from '../types';
 import { useTranslation } from '../utils/i18n';
 
@@ -8,9 +8,16 @@ interface DisplayControlsProps {
   onConfigChange: (config: DisplayConfig) => void;
   onImportData?: (file: File) => void;
   language: 'zh' | 'en';
+  hasCalibrationData?: boolean; // 新增：是否有校准数据
 }
 
-export default function DisplayControls({ config, onConfigChange, onImportData, language }: DisplayControlsProps) {
+export default function DisplayControls({ 
+  config, 
+  onConfigChange, 
+  onImportData, 
+  language,
+  hasCalibrationData = false 
+}: DisplayControlsProps) {
   const { t } = useTranslation(language);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -56,27 +63,20 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
     });
   };
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // 新增：切换校准数据显示
+  const handleToggleCalibratedData = () => {
+    onConfigChange({
+      ...config,
+      showCalibratedData: !config.showCalibratedData
+    });
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && onImportData) {
-      try {
-        await onImportData(file);
-        // 清空文件输入，允许重复选择同一文件
-        event.target.value = '';
-        
-        // 显示成功提示
-        alert(language === 'zh' 
-          ? `成功导入CSV文件并自动可视化！文件: ${file.name}`
-          : `Successfully imported CSV file and auto-visualized! File: ${file.name}`
-        );
-      } catch (error) {
-        console.error('CSV import failed:', error);
-        alert(language === 'zh' 
-          ? `导入失败: ${(error as Error).message}`
-          : `Import failed: ${(error as Error).message}`
-        );
-        event.target.value = '';
-      }
+      onImportData(file);
+      // 清空文件输入，允许重复选择同一文件
+      event.target.value = '';
     }
   };
 
@@ -180,7 +180,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
           <label className="block text-sm font-medium text-gray-300 mb-2">
             {t('displayOptions')}
           </label>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleToggleGrid}
               className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
@@ -216,10 +216,43 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
               <Clock className="w-3 h-3" />
               {t('relative')}
             </button>
+
+            {/* 新增：校准数据切换按钮 */}
+            <button
+              onClick={handleToggleCalibratedData}
+              disabled={!hasCalibrationData}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                config.showCalibratedData
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title={hasCalibrationData 
+                ? (language === 'zh' ? '切换显示校准后的数据' : 'Toggle calibrated data display')
+                : (language === 'zh' ? '无校准数据可显示' : 'No calibration data available')
+              }
+            >
+              <Zap className="w-3 h-3" />
+              {language === 'zh' ? '校准' : 'Cal'}
+            </button>
           </div>
         </div>
 
-        {/* CSV导入功能 - 增强版 */}
+        {/* 校准数据状态提示 */}
+        {hasCalibrationData && (
+          <div className="p-2 bg-orange-900 border border-orange-700 rounded-lg">
+            <div className="flex items-center gap-2 text-xs">
+              <Zap className="w-3 h-3 text-orange-400" />
+              <span className="text-orange-300">
+                {config.showCalibratedData 
+                  ? (language === 'zh' ? '当前显示校准后的温度数据' : 'Currently showing calibrated temperature data')
+                  : (language === 'zh' ? '当前显示原始温度数据' : 'Currently showing original temperature data')
+                }
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* CSV导入功能 */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             {t('dataImport')}
@@ -241,10 +274,7 @@ export default function DisplayControls({ config, onConfigChange, onImportData, 
           />
           
           <div className="text-xs text-gray-400 mt-1">
-            {language === 'zh' 
-              ? '导入CSV文件后将自动可视化数据并替换当前显示内容'
-              : 'CSV files will be automatically visualized and replace current display after import'
-            }
+            {t('supportImportingCSV')}
           </div>
         </div>
       </div>

@@ -31,6 +31,7 @@ export interface DisplayConfig {
   showGrid: boolean;
   showLegend: boolean;
   relativeTime: boolean;
+  showCalibratedData: boolean; // 新增：是否显示校准后的数据
 }
 
 export interface ConnectionStatus {
@@ -77,13 +78,6 @@ export interface TemperatureConversionConfig {
   mode: 'builtin' | 'custom';
   customFormula: string;
   testValue: number;
-}
-
-// 新增：校准配置
-export interface CalibrationConfig {
-  enabled: boolean;
-  offsets: number[]; // 每个通道的校准偏移值
-  appliedToData: boolean; // 是否已应用到数据
 }
 
 // 新增：语言配置
@@ -166,4 +160,11 @@ export interface ModbusOperation {
   status: 'pending' | 'success' | 'error';
   error?: string;
   response?: number[];
+}
+
+// 新增：校准偏移值接口
+export interface CalibrationOffset {
+  channelId: number;
+  offset: number;
+  enabled: boolean;
 }

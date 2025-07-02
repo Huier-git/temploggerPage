@@ -28,6 +28,7 @@ export const translations = {
     enabled: '启用',
     disabled: '禁用',
     unknown: '未知',
+    time: '时间',
     
     // 头部状态
     currentTime: '当前时间',
@@ -227,6 +228,7 @@ export const translations = {
     enabled: 'Enabled',
     disabled: 'Disabled',
     unknown: 'Unknown',
+    time: 'Time',
     
     // Header status
     currentTime: 'Current Time',

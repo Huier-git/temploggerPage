@@ -1,115 +1,104 @@
-import React, { useState } from 'react';
-import { Settings, Zap, RotateCcw, Save, AlertTriangle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Zap, RotateCcw, Save, AlertTriangle, CheckCircle, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChannelConfig } from '../types';
 import { useTranslation } from '../utils/i18n';
 
-export interface CalibrationConfig {
+interface CalibrationOffset {
+  channelId: number;
+  offset: number;
   enabled: boolean;
-  offsets: number[]; // 每个通道的校准偏移值
-  appliedToData: boolean; // 是否已应用到数据
 }
 
 interface TemperatureCalibrationProps {
-  config: CalibrationConfig;
-  onConfigChange: (config: CalibrationConfig) => void;
-  onApplyCalibration: () => void;
-  channelCount: number;
+  channels: ChannelConfig[];
+  onApplyCalibration: (offsets: CalibrationOffset[]) => void;
   language: 'zh' | 'en';
-  hasData: boolean;
+  maxChannels: number;
 }
 
 export default function TemperatureCalibration({ 
-  config, 
-  onConfigChange, 
-  onApplyCalibration,
-  channelCount, 
+  channels, 
+  onApplyCalibration, 
   language, 
-  hasData 
+  maxChannels 
 }: TemperatureCalibrationProps) {
   const { t } = useTranslation(language);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [presetMode, setPresetMode] = useState<'individual' | 'uniform'>('individual');
-  const [uniformOffset, setUniformOffset] = useState<number>(0);
+  const [offsets, setOffsets] = useState<CalibrationOffset[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+  const [lastAppliedTime, setLastAppliedTime] = useState<number | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false); // 默认折叠状态
 
-  const handleOffsetChange = (channelIndex: number, value: number) => {
-    const newOffsets = [...config.offsets];
-    newOffsets[channelIndex] = value;
-    
-    onConfigChange({
-      ...config,
-      offsets: newOffsets
-    });
+  // 初始化校准偏移值
+  useEffect(() => {
+    const initialOffsets = channels
+      .filter(channel => channel.id <= maxChannels)
+      .map(channel => ({
+        channelId: channel.id,
+        offset: 0,
+        enabled: channel.enabled
+      }));
+    setOffsets(initialOffsets);
+  }, [channels, maxChannels]);
+
+  const handleOffsetChange = (channelId: number, value: number) => {
+    setOffsets(prev => prev.map(offset => 
+      offset.channelId === channelId 
+        ? { ...offset, offset: value }
+        : offset
+    ));
   };
 
-  const handleToggleEnabled = () => {
-    onConfigChange({
-      ...config,
-      enabled: !config.enabled
-    });
+  const handleEnabledChange = (channelId: number, enabled: boolean) => {
+    setOffsets(prev => prev.map(offset => 
+      offset.channelId === channelId 
+        ? { ...offset, enabled }
+        : offset
+    ));
+  };
+
+  const handleApplyCalibration = async () => {
+    setIsApplying(true);
+    
+    try {
+      // 只应用启用通道的校准值
+      const activeOffsets = offsets.filter(offset => offset.enabled);
+      await onApplyCalibration(activeOffsets);
+      setLastAppliedTime(Date.now());
+      
+      // 显示成功提示
+      const message = language === 'zh' 
+        ? `成功应用 ${activeOffsets.length} 个通道的校准值`
+        : `Successfully applied calibration for ${activeOffsets.length} channels`;
+      alert(message);
+    } catch (error) {
+      console.error('校准应用失败:', error);
+      const message = language === 'zh' 
+        ? '校准应用失败，请重试'
+        : 'Calibration application failed, please try again';
+      alert(message);
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const handleResetOffsets = () => {
-    onConfigChange({
-      ...config,
-      offsets: new Array(16).fill(0),
-      appliedToData: false
-    });
+    setOffsets(prev => prev.map(offset => ({ ...offset, offset: 0 })));
   };
 
-  const handleApplyUniformOffset = () => {
-    const newOffsets = new Array(16).fill(0);
-    for (let i = 0; i < channelCount; i++) {
-      newOffsets[i] = uniformOffset;
-    }
-    
-    onConfigChange({
-      ...config,
-      offsets: newOffsets
-    });
+  const handleSetAllOffsets = (value: number) => {
+    setOffsets(prev => prev.map(offset => ({ ...offset, offset: value })));
   };
 
-  const handleApplyCalibration = () => {
-    if (!hasData) {
-      alert(language === 'zh' 
-        ? '没有数据可以校准，请先采集或导入数据'
-        : 'No data to calibrate, please collect or import data first'
-      );
-      return;
-    }
-
-    if (config.offsets.every(offset => offset === 0)) {
-      alert(language === 'zh' 
-        ? '所有校准值都为0，无需校准'
-        : 'All calibration values are 0, no calibration needed'
-      );
-      return;
-    }
-
-    const confirmMessage = language === 'zh' 
-      ? '确定要应用校准值吗？这将修改所有现有数据的温度值。此操作不可撤销。'
-      : 'Are you sure you want to apply calibration? This will modify temperature values of all existing data. This operation cannot be undone.';
-    
-    if (confirm(confirmMessage)) {
-      onApplyCalibration();
-      onConfigChange({
-        ...config,
-        appliedToData: true
-      });
-    }
+  const getActiveOffsetsCount = () => {
+    return offsets.filter(offset => offset.enabled && offset.offset !== 0).length;
   };
 
-  // 预设校准值
-  const presetOffsets = [
-    { name: language === 'zh' ? '无校准' : 'No Calibration', values: new Array(16).fill(0) },
-    { name: language === 'zh' ? '标准校准 (-1°C)' : 'Standard Calibration (-1°C)', values: new Array(16).fill(-1) },
-    { name: language === 'zh' ? '高温校准 (-2°C)' : 'High Temp Calibration (-2°C)', values: new Array(16).fill(-2) },
-    { name: language === 'zh' ? '低温校准 (+1°C)' : 'Low Temp Calibration (+1°C)', values: new Array(16).fill(1) }
-  ];
-
-  const activeChannelOffsets = config.offsets.slice(0, channelCount);
-  const hasNonZeroOffsets = activeChannelOffsets.some(offset => offset !== 0);
+  const hasNonZeroOffsets = () => {
+    return offsets.some(offset => offset.offset !== 0);
+  };
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
       {/* 折叠标题栏 */}
       <div 
         className="flex items-center justify-between cursor-pointer"
@@ -117,37 +106,48 @@ export default function TemperatureCalibration({
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-orange-400" />
-            <Zap className="w-5 h-5 text-yellow-400" />
+            <Calculator className="w-5 h-5 text-orange-400" />
+            <Settings className="w-5 h-5 text-blue-400" />
           </div>
-          <h3 className="text-xl font-semibold text-white">
+          <h2 className="text-xl font-semibold text-white">
             {language === 'zh' ? '温度校准与预处理' : 'Temperature Calibration & Preprocessing'}
-          </h3>
-          <div className={`px-2 py-1 rounded text-xs font-medium ${
-            config.enabled 
-              ? 'bg-green-900 text-green-300'
-              : 'bg-gray-700 text-gray-400'
+          </h2>
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            getActiveOffsetsCount() > 0
+              ? 'bg-orange-900 text-orange-300 border border-orange-700'
+              : 'bg-gray-700 text-gray-300 border border-gray-600'
           }`}>
-            {config.enabled ? t('enabled') : t('disabled')}
+            {getActiveOffsetsCount()} {language === 'zh' ? '个通道已校准' : 'channels calibrated'}
           </div>
-          {hasNonZeroOffsets && (
-            <div className="px-2 py-1 bg-orange-900 text-orange-300 rounded text-xs font-medium">
-              {language === 'zh' ? '有校准值' : 'Has Offsets'}
-            </div>
-          )}
         </div>
         
         <div className="flex items-center gap-3">
-          {!isExpanded && hasData && hasNonZeroOffsets && (
+          {!isExpanded && lastAppliedTime && (
+            <div className="text-sm text-green-400">
+              {language === 'zh' ? '最后校准' : 'Last calibrated'}: {new Date(lastAppliedTime).toLocaleTimeString()}
+            </div>
+          )}
+          
+          {!isExpanded && hasNonZeroOffsets() && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleApplyCalibration();
               }}
-              className="flex items-center gap-2 px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm transition-colors"
+              disabled={isApplying}
+              className="flex items-center gap-2 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
             >
-              <Zap className="w-4 h-4" />
-              {language === 'zh' ? '应用校准' : 'Apply Calibration'}
+              {isApplying ? (
+                <>
+                  <Zap className="w-4 h-4 animate-pulse" />
+                  {language === 'zh' ? '应用中...' : 'Applying...'}
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  {language === 'zh' ? '应用校准' : 'Apply Calibration'}
+                </>
+              )}
             </button>
           )}
           
@@ -162,213 +162,172 @@ export default function TemperatureCalibration({
       {/* 展开内容 */}
       {isExpanded && (
         <div className="mt-6 space-y-6">
-          {/* 校准开关和状态 */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-300">
-                  {language === 'zh' ? '启用温度校准' : 'Enable Temperature Calibration'}
-                </span>
-                <button
-                  onClick={handleToggleEnabled}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    config.enabled ? 'bg-orange-600' : 'bg-gray-600'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      config.enabled ? 'translate-x-6' : 'translate-x-1'
-                    }`}
+          {/* 状态信息 */}
+          {lastAppliedTime && (
+            <div className="text-sm text-green-400 text-center">
+              {language === 'zh' ? '最后校准时间' : 'Last calibrated'}: {new Date(lastAppliedTime).toLocaleString()}
+            </div>
+          )}
+
+          {/* 快速操作 */}
+          <div className="p-4 bg-gray-700 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-3">
+              {language === 'zh' ? '快速操作' : 'Quick Actions'}
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  {language === 'zh' ? '批量设置偏移值' : 'Batch Set Offset'}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="0.0"
+                    className="flex-1 px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        const value = parseFloat((e.target as HTMLInputElement).value) || 0;
+                        handleSetAllOffsets(value);
+                        (e.target as HTMLInputElement).value = '';
+                      }
+                    }}
                   />
+                  <button
+                    onClick={() => {
+                      const input = document.querySelector('input[placeholder="0.0"]') as HTMLInputElement;
+                      const value = parseFloat(input.value) || 0;
+                      handleSetAllOffsets(value);
+                      input.value = '';
+                    }}
+                    className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+                  >
+                    {language === 'zh' ? '应用' : 'Apply'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  onClick={handleResetOffsets}
+                  className="flex items-center gap-2 w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  {language === 'zh' ? '重置所有偏移值' : 'Reset All Offsets'}
                 </button>
               </div>
-              
-              {config.appliedToData && (
-                <div className="flex items-center gap-2 px-3 py-1 bg-green-900 border border-green-700 rounded-lg">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-green-300 text-sm">
-                    {language === 'zh' ? '校准已应用到数据' : 'Calibration applied to data'}
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleResetOffsets}
-                className="flex items-center gap-2 px-3 py-1 bg-gray-600 hover:bg-gray-500 text-white rounded-lg text-sm transition-colors"
-              >
-                <RotateCcw className="w-4 h-4" />
-                {language === 'zh' ? '重置' : 'Reset'}
-              </button>
+
+              <div className="flex items-end">
+                <button
+                  onClick={handleApplyCalibration}
+                  disabled={isApplying || !hasNonZeroOffsets()}
+                  className="flex items-center gap-2 w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                >
+                  {isApplying ? (
+                    <>
+                      <Zap className="w-4 h-4 animate-pulse" />
+                      {language === 'zh' ? '应用中...' : 'Applying...'}
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      {language === 'zh' ? '应用校准' : 'Apply Calibration'}
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
-          {config.enabled && (
-            <>
-              {/* 预设模式选择 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  {language === 'zh' ? '校准模式' : 'Calibration Mode'}
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setPresetMode('individual')}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      presetMode === 'individual'
-                        ? 'border-orange-500 bg-orange-900 text-orange-300'
-                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
+          {/* 通道校准设置 */}
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-4">
+              {language === 'zh' ? '通道校准设置' : 'Channel Calibration Settings'}
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {offsets.map(offset => {
+                const channel = channels.find(ch => ch.id === offset.channelId);
+                if (!channel) return null;
+                
+                const isLocked = channel.id > maxChannels;
+                
+                return (
+                  <div
+                    key={offset.channelId}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      isLocked 
+                        ? 'border-gray-700 bg-gray-900 opacity-40'
+                        : offset.enabled
+                          ? 'border-orange-500 bg-gray-700'
+                          : 'border-gray-600 bg-gray-800'
                     }`}
                   >
-                    <div className="text-sm font-medium">
-                      {language === 'zh' ? '独立校准' : 'Individual Calibration'}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: isLocked ? '#6B7280' : channel.color }}
+                        />
+                        <span className="text-sm font-medium text-gray-300">
+                          {channel.name}
+                        </span>
+                      </div>
+                      
+                      {!isLocked && (
+                        <input
+                          type="checkbox"
+                          checked={offset.enabled}
+                          onChange={(e) => handleEnabledChange(offset.channelId, e.target.checked)}
+                          className="w-4 h-4 text-orange-600 bg-gray-700 border-gray-600 rounded focus:ring-orange-500"
+                        />
+                      )}
                     </div>
-                    <div className="text-xs opacity-75 mt-1">
-                      {language === 'zh' ? '为每个通道设置不同的校准值' : 'Set different calibration values for each channel'}
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => setPresetMode('uniform')}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      presetMode === 'uniform'
-                        ? 'border-orange-500 bg-orange-900 text-orange-300'
-                        : 'border-gray-600 bg-gray-700 text-gray-300 hover:border-gray-500'
-                    }`}
-                  >
-                    <div className="text-sm font-medium">
-                      {language === 'zh' ? '统一校准' : 'Uniform Calibration'}
-                    </div>
-                    <div className="text-xs opacity-75 mt-1">
-                      {language === 'zh' ? '为所有通道设置相同的校准值' : 'Set same calibration value for all channels'}
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* 统一校准模式 */}
-              {presetMode === 'uniform' && (
-                <div className="p-4 bg-gray-700 rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        {language === 'zh' ? '统一校准偏移值 (°C)' : 'Uniform Calibration Offset (°C)'}
+                    
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">
+                        {language === 'zh' ? '校准偏移值 (°C)' : 'Calibration Offset (°C)'}
                       </label>
                       <input
                         type="number"
-                        value={uniformOffset}
-                        onChange={(e) => setUniformOffset(parseFloat(e.target.value) || 0)}
                         step="0.1"
-                        className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                        value={offset.offset}
+                        onChange={(e) => handleOffsetChange(offset.channelId, parseFloat(e.target.value) || 0)}
+                        disabled={isLocked || !offset.enabled}
+                        className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         placeholder="0.0"
                       />
                     </div>
-                    <button
-                      onClick={handleApplyUniformOffset}
-                      className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-colors"
-                    >
-                      {language === 'zh' ? '应用到所有通道' : 'Apply to All Channels'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* 预设校准值 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  {language === 'zh' ? '预设校准值' : 'Preset Calibration Values'}
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {presetOffsets.map((preset, index) => (
-                    <button
-                      key={index}
-                      onClick={() => onConfigChange({
-                        ...config,
-                        offsets: [...preset.values]
-                      })}
-                      className="px-3 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 独立通道校准 */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  {language === 'zh' ? '通道校准偏移值 (°C)' : 'Channel Calibration Offsets (°C)'}
-                </label>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {Array.from({ length: channelCount }, (_, i) => (
-                    <div key={i} className="space-y-1">
-                      <label className="block text-xs text-gray-400">
-                        {language === 'zh' ? '通道' : 'Ch'} {i + 1}
-                      </label>
-                      <input
-                        type="number"
-                        value={config.offsets[i] || 0}
-                        onChange={(e) => handleOffsetChange(i, parseFloat(e.target.value) || 0)}
-                        step="0.1"
-                        className="w-full px-2 py-1 text-sm bg-gray-600 border border-gray-500 rounded text-white focus:ring-2 focus:ring-orange-500"
-                        placeholder="0.0"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* 校准应用 */}
-              <div className="p-4 bg-gray-700 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-lg font-semibold text-white mb-2">
-                      {language === 'zh' ? '应用校准到数据' : 'Apply Calibration to Data'}
-                    </h4>
-                    <p className="text-sm text-gray-300">
-                      {language === 'zh' 
-                        ? '点击下方按钮将校准值应用到所有现有数据。校准后的温度 = 原始温度 + 校准偏移值'
-                        : 'Click the button below to apply calibration to all existing data. Calibrated temperature = Original temperature + Calibration offset'
-                      }
-                    </p>
-                    {hasNonZeroOffsets && (
-                      <div className="mt-2 text-xs text-orange-300">
-                        {language === 'zh' 
-                          ? `活跃通道校准值: ${activeChannelOffsets.map((offset, i) => `Ch${i+1}: ${offset > 0 ? '+' : ''}${offset}°C`).join(', ')}`
-                          : `Active channel offsets: ${activeChannelOffsets.map((offset, i) => `Ch${i+1}: ${offset > 0 ? '+' : ''}${offset}°C`).join(', ')}`
-                        }
+                    
+                    {offset.offset !== 0 && offset.enabled && !isLocked && (
+                      <div className="mt-2 text-xs text-orange-400">
+                        {language === 'zh' ? '校准后' : 'After calibration'}: T + ({offset.offset > 0 ? '+' : ''}{offset.offset})°C
                       </div>
                     )}
                   </div>
-                  
-                  <button
-                    onClick={handleApplyCalibration}
-                    disabled={!hasData || !hasNonZeroOffsets}
-                    className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
-                  >
-                    <Zap className="w-4 h-4" />
-                    {language === 'zh' ? '应用校准' : 'Apply Calibration'}
-                  </button>
-                </div>
-              </div>
+                );
+              })}
+            </div>
+          </div>
 
-              {/* 重要说明 */}
-              <div className="p-4 bg-blue-900 border border-blue-700 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle className="w-4 h-4 text-blue-400" />
-                  <span className="text-blue-300 font-medium">
-                    {language === 'zh' ? '重要说明' : 'Important Notes'}
-                  </span>
-                </div>
-                <ul className="text-blue-300 text-sm space-y-1">
-                  <li>• <strong>{language === 'zh' ? '校准公式' : 'Calibration Formula'}</strong>: {language === 'zh' ? '校准后温度 = 原始温度 + 偏移值' : 'Calibrated Temperature = Original Temperature + Offset'}</li>
-                  <li>• <strong>{language === 'zh' ? '数据记录' : 'Data Recording'}</strong>: {language === 'zh' ? '导出的CSV文件将包含原始温度和校准后温度两列' : 'Exported CSV files will include both original and calibrated temperature columns'}</li>
-                  <li>• <strong>{language === 'zh' ? '应用时机' : 'Application Timing'}</strong>: {language === 'zh' ? '可以在数据采集前设置，也可以在采集后应用' : 'Can be set before data collection or applied after collection'}</li>
-                  <li>• <strong>{language === 'zh' ? '不可撤销' : 'Irreversible'}</strong>: {language === 'zh' ? '应用校准后无法撤销，请谨慎操作' : 'Calibration application cannot be undone, please operate carefully'}</li>
-                </ul>
-              </div>
-            </>
-          )}
+          {/* 说明信息 */}
+          <div className="p-4 bg-blue-900 border border-blue-700 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="w-4 h-4 text-blue-400" />
+              <span className="text-blue-300 font-medium">
+                {language === 'zh' ? '校准说明' : 'Calibration Instructions'}
+              </span>
+            </div>
+            <ul className="text-blue-300 text-sm space-y-1">
+              <li>• <strong>{language === 'zh' ? '校准公式' : 'Calibration Formula'}</strong>: {language === 'zh' ? '校准后温度 = 原始温度 + 偏移值' : 'Calibrated Temperature = Original Temperature + Offset'}</li>
+              <li>• <strong>{language === 'zh' ? '正偏移值' : 'Positive Offset'}</strong>: {language === 'zh' ? '增加温度读数（如传感器读数偏低）' : 'Increases temperature reading (if sensor reads low)'}</li>
+              <li>• <strong>{language === 'zh' ? '负偏移值' : 'Negative Offset'}</strong>: {language === 'zh' ? '减少温度读数（如传感器读数偏高）' : 'Decreases temperature reading (if sensor reads high)'}</li>
+              <li>• <strong>{language === 'zh' ? '应用范围' : 'Application Scope'}</strong>: {language === 'zh' ? '校准将应用到当前会话的所有历史数据' : 'Calibration applies to all historical data in current session'}</li>
+              <li>• <strong>{language === 'zh' ? '数据导出' : 'Data Export'}</strong>: {language === 'zh' ? 'CSV导出将包含原始温度和校准后温度两列' : 'CSV export will include both original and calibrated temperature columns'}</li>
+              <li>• <strong>{language === 'zh' ? '曲线显示' : 'Chart Display'}</strong>: {language === 'zh' ? '可在显示控制面板中切换查看原始/校准数据' : 'Switch between original/calibrated data view in display controls'}</li>
+            </ul>
+          </div>
         </div>
       )}
     </div>

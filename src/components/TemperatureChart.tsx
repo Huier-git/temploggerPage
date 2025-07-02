@@ -2,14 +2,33 @@ import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TemperatureReading, DisplayConfig, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
+import { Zap, ToggleLeft, ToggleRight } from 'lucide-react';
+import { useTranslation } from '../utils/i18n';
 
 interface TemperatureChartProps {
   readings: TemperatureReading[];
   displayConfig: DisplayConfig;
   channels: ChannelConfig[];
   language: 'zh' | 'en';
-  onHoverDataChange?: (hoverData: { [channelId: number]: number } | null) => void; // 新增：鼠标悬停数据回调
+  onHoverDataChange?: (hoverData: { [channelId: number]: number } | null) => void;
 }
+
+// Function to darken a color for calibrated data display
+const darkenColor = (color: string, factor: number = 0.6): string => {
+  // Convert hex to RGB
+  const hex = color.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  
+  // Darken by multiplying by factor
+  const darkR = Math.round(r * factor);
+  const darkG = Math.round(g * factor);
+  const darkB = Math.round(b * factor);
+  
+  // Convert back to hex
+  return `#${darkR.toString(16).padStart(2, '0')}${darkG.toString(16).padStart(2, '0')}${darkB.toString(16).padStart(2, '0')}`;
+};
 
 export default function TemperatureChart({ 
   readings, 
@@ -18,6 +37,11 @@ export default function TemperatureChart({
   language,
   onHoverDataChange 
 }: TemperatureChartProps) {
+  const { t } = useTranslation(language);
+  
+  // Internal state for calibration toggle (separate from displayConfig)
+  const [showCalibratedData, setShowCalibratedData] = React.useState(false);
+
   // Filter readings based on display mode and time window
   const filteredReadings = React.useMemo(() => {
     if (displayConfig.mode === 'sliding') {
@@ -27,25 +51,37 @@ export default function TemperatureChart({
     return readings;
   }, [readings, displayConfig]);
 
+  // Check if we have calibration data
+  const hasCalibrationData = React.useMemo(() => {
+    return filteredReadings.some(reading => reading.calibratedTemperature !== undefined);
+  }, [filteredReadings]);
+
+  // Reset calibration toggle when no calibration data is available
+  React.useEffect(() => {
+    if (!hasCalibrationData) {
+      setShowCalibratedData(false);
+    }
+  }, [hasCalibrationData]);
+
   // Get start time for relative time calculation
   const startTime = React.useMemo(() => {
     if (filteredReadings.length === 0) return Date.now();
     return Math.min(...filteredReadings.map(r => r.timestamp));
   }, [filteredReadings]);
 
-  // Transform data for chart
+  // Transform data for chart - 关键修复：确保数据结构正确且完整
   const chartData = React.useMemo(() => {
     const dataMap = new Map<number, any>();
     
-    // 如果没有数据，返回空数组
     if (filteredReadings.length === 0) {
       return [];
     }
     
+    // 按时间戳分组数据
     filteredReadings.forEach(reading => {
       const timestamp = reading.timestamp;
       const relativeTime = displayConfig.relativeTime 
-        ? Math.round((timestamp - startTime) / 1000) // relative seconds
+        ? Math.round((timestamp - startTime) / 1000)
         : timestamp;
       
       if (!dataMap.has(timestamp)) {
@@ -61,20 +97,34 @@ export default function TemperatureChart({
               })
         });
       }
-      dataMap.get(timestamp)[`channel${reading.channel}`] = reading.temperature;
+      
+      const dataPoint = dataMap.get(timestamp);
+      
+      // 始终存储原始温度数据
+      dataPoint[`channel${reading.channel}`] = reading.temperature;
+      
+      // 如果有校准数据，也存储校准温度
+      if (reading.calibratedTemperature !== undefined) {
+        dataPoint[`channel${reading.channel}_calibrated`] = reading.calibratedTemperature;
+      }
     });
     
     return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
   }, [filteredReadings, displayConfig.relativeTime, startTime]);
 
-  // 计算Y轴范围 - 统一处理，确保一致性
+  // Calculate Y-axis range
   const calculateYAxisDomain = React.useCallback((data: any[], channelsToUse: ChannelConfig[]) => {
     if (data.length === 0) return [0, 50];
     
     const allTemperatures: number[] = [];
     data.forEach(item => {
       channelsToUse.filter(ch => ch.enabled).forEach(channel => {
-        const temp = item[`channel${channel.id}`];
+        // 根据当前显示模式获取温度值
+        const tempKey = showCalibratedData && hasCalibrationData 
+          ? `channel${channel.id}_calibrated` 
+          : `channel${channel.id}`;
+        
+        const temp = item[tempKey];
         if (typeof temp === 'number' && !isNaN(temp)) {
           allTemperatures.push(temp);
         }
@@ -86,29 +136,31 @@ export default function TemperatureChart({
     const minTemp = Math.min(...allTemperatures);
     const maxTemp = Math.max(...allTemperatures);
     const range = maxTemp - minTemp;
-    const padding = Math.max(range * 0.1, 2); // 至少2度的padding
+    const padding = Math.max(range * 0.1, 2);
     
     return [
-      Math.floor((minTemp - padding) * 10) / 10, // 保留1位小数
-      Math.ceil((maxTemp + padding) * 10) / 10   // 保留1位小数
+      Math.floor((minTemp - padding) * 10) / 10,
+      Math.ceil((maxTemp + padding) * 10) / 10
     ];
-  }, []);
+  }, [showCalibratedData, hasCalibrationData]);
 
   const yAxisDomain = React.useMemo(() => {
     return calculateYAxisDomain(chartData, channels);
   }, [chartData, channels, calculateYAxisDomain]);
 
-  // 处理鼠标悬停事件
+  // Handle mouse hover events
   const handleMouseMove = React.useCallback((data: any) => {
     if (!onHoverDataChange || !data || !data.activePayload) {
       return;
     }
 
-    // 提取当前悬停点的温度数据
     const hoverData: { [channelId: number]: number } = {};
     
     channels.filter(ch => ch.enabled).forEach(channel => {
-      const channelKey = `channel${channel.id}`;
+      const channelKey = showCalibratedData && hasCalibrationData 
+        ? `channel${channel.id}_calibrated` 
+        : `channel${channel.id}`;
+      
       const payload = data.activePayload.find((p: any) => p.dataKey === channelKey);
       if (payload && typeof payload.value === 'number') {
         hoverData[channel.id] = payload.value;
@@ -116,9 +168,8 @@ export default function TemperatureChart({
     });
 
     onHoverDataChange(Object.keys(hoverData).length > 0 ? hoverData : null);
-  }, [onHoverDataChange, channels]);
+  }, [onHoverDataChange, channels, showCalibratedData, hasCalibrationData]);
 
-  // 处理鼠标离开事件
   const handleMouseLeave = React.useCallback(() => {
     if (onHoverDataChange) {
       onHoverDataChange(null);
@@ -130,11 +181,16 @@ export default function TemperatureChart({
       return (
         <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 shadow-xl">
           <p className="text-gray-300 text-sm mb-2 font-medium">
-            {displayConfig.relativeTime ? `Time: ${label}` : `Time: ${label}`}
+            {displayConfig.relativeTime ? `${t('time')}: ${label}` : `${t('time')}: ${label}`}
           </p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
               {`${entry.name}: ${entry.value.toFixed(1)}°C`}
+              {showCalibratedData && hasCalibrationData && (
+                <span className="text-orange-400 ml-1">
+                  ({language === 'zh' ? '校准' : 'Cal'})
+                </span>
+              )}
             </p>
           ))}
         </div>
@@ -145,38 +201,52 @@ export default function TemperatureChart({
 
   // Render individual chart for each channel
   const renderIndividualChart = (channel: ChannelConfig) => {
+    const dataKey = showCalibratedData && hasCalibrationData 
+      ? `channel${channel.id}_calibrated` 
+      : `channel${channel.id}`;
+    
     const channelData = chartData.map(item => ({
       ...item,
-      temperature: item[`channel${channel.id}`]
+      temperature: item[dataKey]
     })).filter(item => item.temperature !== undefined);
 
     if (channelData.length === 0) {
       return (
         <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-64 flex items-center justify-center">
-          <p className="text-gray-400 text-sm">{channel.name} - No Data</p>
+          <p className="text-gray-400 text-sm">{channel.name} - {t('noData')}</p>
         </div>
       );
     }
 
-    // 计算单个通道的Y轴范围 - 使用统一的计算方法
     const channelTemps = channelData.map(d => d.temperature).filter(t => !isNaN(t));
     const minTemp = Math.min(...channelTemps);
     const maxTemp = Math.max(...channelTemps);
     const range = maxTemp - minTemp;
     const padding = Math.max(range * 0.1, 1);
     const channelYDomain = [
-      Math.floor((minTemp - padding) * 10) / 10, // 保留1位小数
-      Math.ceil((maxTemp + padding) * 10) / 10   // 保留1位小数
+      Math.floor((minTemp - padding) * 10) / 10,
+      Math.ceil((maxTemp + padding) * 10) / 10
     ];
+
+    // Choose color based on calibration status
+    const lineColor = showCalibratedData && hasCalibrationData 
+      ? darkenColor(channel.color) 
+      : channel.color;
 
     return (
       <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
         <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
           <div 
             className="w-3 h-3 rounded-full"
-            style={{ backgroundColor: channel.color }}
+            style={{ backgroundColor: lineColor }}
           />
           {channel.name}
+          {showCalibratedData && hasCalibrationData && (
+            <span className="text-orange-400 text-sm flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              ({language === 'zh' ? '校准' : 'Cal'})
+            </span>
+          )}
         </h4>
         
         <div style={{ width: '100%', height: '200px' }}>
@@ -209,10 +279,10 @@ export default function TemperatureChart({
               <Line
                 type="monotone"
                 dataKey="temperature"
-                stroke={channel.color}
+                stroke={lineColor}
                 strokeWidth={2}
                 dot={false}
-                activeDot={{ r: 4, stroke: channel.color, strokeWidth: 2 }}
+                activeDot={{ r: 4, stroke: lineColor, strokeWidth: 2 }}
                 connectNulls={false}
                 isAnimationActive={false}
               />
@@ -228,29 +298,70 @@ export default function TemperatureChart({
       <div className="bg-gray-800 rounded-lg border border-gray-700 h-[600px] flex items-center justify-center">
         <div className="text-center">
           <div className="text-6xl mb-4">📊</div>
-          <p className="text-gray-400 text-lg">No Temperature Data</p>
-          <p className="text-gray-500 text-sm mt-2">Start test mode or connect device to begin monitoring</p>
+          <p className="text-gray-400 text-lg">{t('noTemperatureData')}</p>
+          <p className="text-gray-500 text-sm mt-2">{t('startTestModeOrConnect')}</p>
         </div>
       </div>
     );
   }
 
-  // Individual view: display independent subplots
+  // Individual view
   if (displayConfig.viewMode === 'individual') {
     const enabledChannels = channels.filter(channel => channel.enabled);
     
     return (
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold text-white">
-            Individual View - Channel Analysis
+          <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+            {language === 'zh' ? '分析视图 - 通道分析' : 'Individual View - Channel Analysis'}
+            {showCalibratedData && hasCalibrationData && (
+              <span className="text-orange-400 text-lg flex items-center gap-1">
+                <Zap className="w-5 h-5" />
+                ({language === 'zh' ? '校准数据' : 'Calibrated Data'})
+              </span>
+            )}
           </h3>
           <div className="flex items-center gap-4">
+            {/* Calibration Toggle Switch */}
+            {hasCalibrationData && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-300">
+                  {language === 'zh' ? '显示校准数据' : 'Show Calibrated Data'}
+                </span>
+                <button
+                  onClick={() => setShowCalibratedData(!showCalibratedData)}
+                  className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
+                    showCalibratedData 
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                      : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                  }`}
+                >
+                  {showCalibratedData ? (
+                    <ToggleRight className="w-4 h-4" />
+                  ) : (
+                    <ToggleLeft className="w-4 h-4" />
+                  )}
+                  <span className="text-sm">
+                    {showCalibratedData 
+                      ? (language === 'zh' ? '校准' : 'Calibrated')
+                      : (language === 'zh' ? '原始' : 'Original')
+                    }
+                  </span>
+                </button>
+              </div>
+            )}
+            
             <div className="text-sm text-gray-400">
-              Display Mode: {displayConfig.mode === 'sliding' ? `Sliding Window (${displayConfig.timeWindow}min)` : 'Full History'}
+              {language === 'zh' ? '显示模式' : 'Display Mode'}: {displayConfig.mode === 'sliding' 
+                ? `${language === 'zh' ? '滑动窗口' : 'Sliding Window'} (${displayConfig.timeWindow}${language === 'zh' ? '分钟' : 'min'})` 
+                : (language === 'zh' ? '完整历史' : 'Full History')
+              }
             </div>
             <div className="text-sm text-gray-400">
-              Time Axis: {displayConfig.relativeTime ? 'Relative Time' : 'Absolute Time'}
+              {language === 'zh' ? '时间轴' : 'Time Axis'}: {displayConfig.relativeTime 
+                ? (language === 'zh' ? '相对时间' : 'Relative Time') 
+                : (language === 'zh' ? '绝对时间' : 'Absolute Time')
+              }
             </div>
           </div>
         </div>
@@ -264,23 +375,79 @@ export default function TemperatureChart({
     );
   }
 
-  // Combined view: all curves in the same chart - 固定高度600px
+  // Combined view
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-2xl font-bold text-white">
-          Combined View - Temperature Trends
+        <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+          {language === 'zh' ? '综合视图 - 温度趋势' : 'Combined View - Temperature Trends'}
+          {showCalibratedData && hasCalibrationData && (
+            <span className="text-orange-400 text-lg flex items-center gap-1">
+              <Zap className="w-5 h-5" />
+              ({language === 'zh' ? '校准数据' : 'Calibrated Data'})
+            </span>
+          )}
         </h3>
         <div className="flex items-center gap-4">
+          {/* Calibration Toggle Switch */}
+          {hasCalibrationData && (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-300">
+                {language === 'zh' ? '显示校准数据' : 'Show Calibrated Data'}
+              </span>
+              <button
+                onClick={() => setShowCalibratedData(!showCalibratedData)}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
+                  showCalibratedData 
+                    ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                    : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                }`}
+              >
+                {showCalibratedData ? (
+                  <ToggleRight className="w-4 h-4" />
+                ) : (
+                  <ToggleLeft className="w-4 h-4" />
+                )}
+                <span className="text-sm">
+                  {showCalibratedData 
+                    ? (language === 'zh' ? '校准' : 'Calibrated')
+                    : (language === 'zh' ? '原始' : 'Original')
+                  }
+                </span>
+              </button>
+            </div>
+          )}
+          
           <div className="text-sm text-gray-400">
-            Display Mode: {displayConfig.mode === 'sliding' ? `Sliding Window (${displayConfig.timeWindow}min)` : 'Full History'}
+            {language === 'zh' ? '显示模式' : 'Display Mode'}: {displayConfig.mode === 'sliding' 
+              ? `${language === 'zh' ? '滑动窗口' : 'Sliding Window'} (${displayConfig.timeWindow}${language === 'zh' ? '分钟' : 'min'})` 
+              : (language === 'zh' ? '完整历史' : 'Full History')
+            }
           </div>
           <div className="text-sm text-gray-400">
-            Time Axis: {displayConfig.relativeTime ? 'Relative Time (min:sec)' : 'Absolute Time'}
+            {language === 'zh' ? '时间轴' : 'Time Axis'}: {displayConfig.relativeTime 
+              ? (language === 'zh' ? '相对时间 (分:秒)' : 'Relative Time (min:sec)') 
+              : (language === 'zh' ? '绝对时间' : 'Absolute Time')
+            }
           </div>
           <div className="text-sm text-gray-400">
-            Data Points: {chartData.length.toLocaleString()}
+            {language === 'zh' ? '数据点' : 'Data Points'}: {chartData.length.toLocaleString()}
           </div>
+          
+          {/* Status indicator */}
+          {hasCalibrationData && (
+            <div className={`text-sm px-3 py-1 rounded-full border flex items-center gap-1 ${
+              showCalibratedData 
+                ? 'bg-orange-900 text-orange-300 border-orange-600' 
+                : 'bg-gray-700 text-gray-400 border-gray-600'
+            }`}>
+              <Zap className="w-3 h-3" />
+              {showCalibratedData 
+                ? (language === 'zh' ? '显示校准数据' : 'Showing Calibrated')
+                : (language === 'zh' ? '显示原始数据' : 'Showing Original')
+              }
+            </div>
+          )}
         </div>
       </div>
       
@@ -317,20 +484,35 @@ export default function TemperatureChart({
               />
             )}
             
-            {channels.filter(channel => channel.enabled).map(channel => (
-              <Line
-                key={channel.id}
-                type="monotone"
-                dataKey={`channel${channel.id}`}
-                stroke={channel.color}
-                strokeWidth={3}
-                dot={false}
-                activeDot={{ r: 6, stroke: channel.color, strokeWidth: 2 }}
-                name={channel.name}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
-            ))}
+            {channels.filter(channel => channel.enabled).map(channel => {
+              // Choose data key and color based on calibration status
+              const dataKey = showCalibratedData && hasCalibrationData 
+                ? `channel${channel.id}_calibrated` 
+                : `channel${channel.id}`;
+              
+              const lineColor = showCalibratedData && hasCalibrationData 
+                ? darkenColor(channel.color) 
+                : channel.color;
+              
+              const channelName = showCalibratedData && hasCalibrationData 
+                ? `${channel.name} (${language === 'zh' ? '校准' : 'Cal'})`
+                : channel.name;
+              
+              return (
+                <Line
+                  key={`${channel.id}_${showCalibratedData ? 'cal' : 'raw'}`}
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={lineColor}
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 6, stroke: lineColor, strokeWidth: 2 }}
+                  name={channelName}
+                  connectNulls={false}
+                  isAnimationActive={false}
+                />
+              );
+            })}
           </LineChart>
         </ResponsiveContainer>
       </div>

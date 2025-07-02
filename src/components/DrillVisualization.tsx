@@ -1,20 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TemperatureReading, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
-import { Thermometer, Move, RotateCcw, Eye, EyeOff, MousePointer } from 'lucide-react';
+import { Thermometer, Move, RotateCcw, Eye, EyeOff, MousePointer, Zap } from 'lucide-react';
 import { useTranslation } from '../utils/i18n';
 
 interface SensorPosition {
   channelId: number;
-  x: number; // 0-100 percentage from left
-  y: number; // 0-100 percentage from top
+  x: number;
+  y: number;
 }
 
 interface DrillVisualizationProps {
   readings: TemperatureReading[];
   channels: ChannelConfig[];
   language: 'zh' | 'en';
-  hoverTemperatures?: { [channelId: number]: number } | null; // 新增：来自图表悬停的温度数据
+  hoverTemperatures?: { [channelId: number]: number } | null;
 }
 
 export default function DrillVisualization({ 
@@ -25,20 +25,18 @@ export default function DrillVisualization({
 }: DrillVisualizationProps) {
   const { t } = useTranslation(language);
   
-  // 获取启用的通道数量
   const enabledChannels = channels.filter(channel => channel.enabled);
   const enabledChannelCount = enabledChannels.length;
   
   const [sensorPositions, setSensorPositions] = useState<SensorPosition[]>(() =>
-    // 根据启用的通道数量优化传感器分布
     enabledChannels.map((channel, index) => {
-      const totalRange = 90; // 5% to 95% = 90% space
+      const totalRange = 90;
       const spacing = enabledChannelCount > 1 ? totalRange / (enabledChannelCount - 1) : 0;
       const yPosition = enabledChannelCount === 1 ? 50 : 5 + (index * spacing);
       
       return {
         channelId: channel.id,
-        x: 50, // Center all sensors on drill string
+        x: 50,
         y: Math.min(95, yPosition)
       };
     })
@@ -47,22 +45,25 @@ export default function DrillVisualization({
   const [draggedSensor, setDraggedSensor] = useState<number | null>(null);
   const [showTemperatureScale, setShowTemperatureScale] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
-  const [useHoverData, setUseHoverData] = useState(false); // 新增：是否使用悬停数据
+  const [useHoverData, setUseHoverData] = useState(false);
+  const [showCalibratedData, setShowCalibratedData] = useState(false); // 新增：校准数据显示开关
   const drillRef = useRef<HTMLDivElement>(null);
 
-  // 当启用通道变化时，重新计算传感器位置
+  // 检查是否有校准数据
+  const hasCalibrationData = React.useMemo(() => {
+    return readings.some(reading => reading.calibratedTemperature !== undefined);
+  }, [readings]);
+
   useEffect(() => {
     const newEnabledChannels = channels.filter(channel => channel.enabled);
     const newCount = newEnabledChannels.length;
     
     if (newCount !== enabledChannelCount) {
-      // 重新分布传感器位置
       const newPositions = newEnabledChannels.map((channel, index) => {
         const totalRange = 90;
         const spacing = newCount > 1 ? totalRange / (newCount - 1) : 0;
         const yPosition = newCount === 1 ? 50 : 5 + (index * spacing);
         
-        // 保留已存在传感器的位置，新增的使用默认位置
         const existingPosition = sensorPositions.find(pos => pos.channelId === channel.id);
         
         return existingPosition || {
@@ -88,7 +89,16 @@ export default function DrillVisualization({
       .filter(r => r.channel === channelId)
       .sort((a, b) => b.timestamp - a.timestamp);
     
-    return channelReadings.length > 0 ? channelReadings[0].temperature : null;
+    if (channelReadings.length === 0) return null;
+    
+    const latestReading = channelReadings[0];
+    
+    // 根据校准数据显示开关选择温度值
+    if (showCalibratedData && latestReading.calibratedTemperature !== undefined) {
+      return latestReading.calibratedTemperature;
+    }
+    
+    return latestReading.temperature;
   };
 
   // Calculate temperature range for color mapping
@@ -116,7 +126,27 @@ export default function DrillVisualization({
     const { min, max } = getTemperatureRange();
     const normalized = Math.max(0, Math.min(1, (temperature - min) / (max - min)));
     
-    // Enhanced color gradient: blue -> cyan -> green -> yellow -> orange -> red
+    // 如果显示校准数据，使用橙色系渐变
+    if (showCalibratedData && hasCalibrationData) {
+      if (normalized < 0.2) {
+        const t = normalized / 0.2;
+        return `rgb(${Math.round(255 - t * 100)}, ${Math.round(165 - t * 65)}, ${Math.round(0)})`;
+      } else if (normalized < 0.4) {
+        const t = (normalized - 0.2) / 0.2;
+        return `rgb(${Math.round(255)}, ${Math.round(100 + t * 65)}, ${Math.round(0)})`;
+      } else if (normalized < 0.6) {
+        const t = (normalized - 0.4) / 0.2;
+        return `rgb(${Math.round(255)}, ${Math.round(165)}, ${Math.round(0 + t * 100)})`;
+      } else if (normalized < 0.8) {
+        const t = (normalized - 0.6) / 0.2;
+        return `rgb(${Math.round(255 - t * 100)}, ${Math.round(165 - t * 65)}, ${Math.round(100)})`;
+      } else {
+        const t = (normalized - 0.8) / 0.2;
+        return `rgb(${Math.round(155 + t * 100)}, ${Math.round(100 - t * 100)}, ${Math.round(100 - t * 100)})`;
+      }
+    }
+    
+    // 原始数据使用蓝-绿-黄-红渐变
     if (normalized < 0.2) {
       const t = normalized / 0.2;
       return `rgb(${Math.round(0 + t * 0)}, ${Math.round(100 + t * 155)}, ${Math.round(255 - t * 55)})`;
@@ -135,11 +165,8 @@ export default function DrillVisualization({
     }
   };
 
-  // Check if sensor intersects with drill string (including bit)
+  // Check if sensor intersects with drill string
   const isSensorIntersectingDrill = (sensorPos: SensorPosition): boolean => {
-    // Main body: x: 37.5%-62.5%, y: 5%-85%
-    // Drill bit: x: 32.5%-67.5%, y: 85%-96.25%
-    
     const mainBodyLeft = 37.5;
     const mainBodyRight = 62.5;
     const mainBodyTop = 5;
@@ -163,7 +190,7 @@ export default function DrillVisualization({
     return inMainBody || inDrillBit;
   };
 
-  // Enhanced temperature gradient calculation with horizontal temperature differences
+  // Enhanced temperature gradient calculation
   const getIntersectingTemperatures = () => {
     const intersectingTemps: Array<{ 
       y: number; 
@@ -198,7 +225,7 @@ export default function DrillVisualization({
     return intersectingTemps.sort((a, b) => a.y - b.y);
   };
 
-  // Enhanced gradient generation with horizontal temperature interpolation
+  // Enhanced gradient generation
   const generateDrillGradient = (intersectingTemperatures: any[], gradientId: string) => {
     if (intersectingTemperatures.length === 0) {
       return (
@@ -209,26 +236,21 @@ export default function DrillVisualization({
       );
     }
 
-    // Sort by Y position and create interpolated gradient
     const sortedTemps = [...intersectingTemperatures].sort((a, b) => a.y - b.y);
     
-    // Create gradient stops with horizontal temperature consideration
     const gradientStops = [];
     
     for (let i = 0; i < sortedTemps.length; i++) {
       const temp = sortedTemps[i];
       const offset = `${temp.y}%`;
       
-      // Consider horizontal temperature differences for color blending
       let blendedColor = temp.color;
       
-      // If there are nearby sensors horizontally, blend their colors
       const nearbyHorizontal = sortedTemps.filter(t => 
         Math.abs(t.y - temp.y) < 10 && Math.abs(t.x - temp.x) > 5
       );
       
       if (nearbyHorizontal.length > 0) {
-        // Blend colors based on horizontal temperature differences
         const avgTemp = (temp.temperature + nearbyHorizontal.reduce((sum, t) => sum + t.temperature, 0)) / (nearbyHorizontal.length + 1);
         blendedColor = temperatureToColor(avgTemp);
       }
@@ -278,7 +300,7 @@ export default function DrillVisualization({
     setDraggedSensor(null);
   };
 
-  // Reset sensor positions to optimal distribution based on current enabled channels
+  // Reset sensor positions
   const resetPositions = () => {
     const currentEnabledChannels = channels.filter(channel => channel.enabled);
     const count = currentEnabledChannels.length;
@@ -345,15 +367,42 @@ export default function DrillVisualization({
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-[600px] flex flex-col">
-      {/* Compact header */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Thermometer className="w-5 h-5 text-orange-400" />
           <h3 className="text-lg font-bold text-white">{t('drillTemperatureDistribution')}</h3>
+          {showCalibratedData && hasCalibrationData && (
+            <span className="text-orange-400 text-sm flex items-center gap-1">
+              <Zap className="w-4 h-4" />
+              ({language === 'zh' ? '校准数据' : 'Calibrated'})
+            </span>
+          )}
         </div>
         
         <div className="flex items-center gap-2">
-          {/* 新增：图表悬停数据开关 */}
+          {/* 新增：校准数据切换开关 */}
+          {hasCalibrationData && (
+            <button
+              onClick={() => setShowCalibratedData(!showCalibratedData)}
+              className={`flex items-center gap-1 p-1.5 rounded transition-colors ${
+                showCalibratedData 
+                  ? 'bg-orange-600 hover:bg-orange-700 text-white' 
+                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+              title={showCalibratedData 
+                ? (language === 'zh' ? '显示校准后温度分布' : 'Showing calibrated temperature distribution')
+                : (language === 'zh' ? '显示原始温度分布' : 'Showing original temperature distribution')
+              }
+            >
+              <Zap className="w-4 h-4" />
+              {showCalibratedData && (
+                <div className="w-2 h-2 bg-orange-300 rounded-full animate-pulse"></div>
+              )}
+            </button>
+          )}
+          
+          {/* 图表悬停数据开关 */}
           <button
             onClick={() => setUseHoverData(!useHoverData)}
             className={`flex items-center gap-1 p-1.5 rounded transition-colors ${
@@ -397,7 +446,7 @@ export default function DrillVisualization({
         </div>
       </div>
 
-      {/* Instructions moved below title */}
+      {/* Instructions */}
       <div className="mb-3 text-center">
         <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
           <Move className="w-3 h-3" />
@@ -409,36 +458,55 @@ export default function DrillVisualization({
               <span>{language === 'zh' ? '使用图表悬停温度' : 'Using chart hover temperatures'}</span>
             </>
           )}
+          {showCalibratedData && hasCalibrationData && (
+            <>
+              <span>•</span>
+              <Zap className="w-3 h-3" />
+              <span>{language === 'zh' ? '显示校准温度' : 'Showing calibrated temperatures'}</span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* 悬停数据状态提示 */}
-      {useHoverData && (
+      {/* 状态提示 */}
+      {(useHoverData || (showCalibratedData && hasCalibrationData)) && (
         <div className="mb-2 p-2 bg-blue-900 border border-blue-700 rounded-lg">
           <div className="flex items-center gap-2 text-xs">
-            <MousePointer className="w-3 h-3 text-blue-400" />
-            <span className="text-blue-300">
-              {hoverTemperatures 
-                ? (language === 'zh' 
-                    ? `显示图表悬停数据 (${Object.keys(hoverTemperatures).length} 个通道)`
-                    : `Showing chart hover data (${Object.keys(hoverTemperatures).length} channels)`
-                  )
-                : (language === 'zh' 
-                    ? '将鼠标悬停在温度图表上查看对应温度分布'
-                    : 'Hover over temperature chart to see corresponding temperature distribution'
-                  )
-              }
-            </span>
+            {useHoverData && (
+              <>
+                <MousePointer className="w-3 h-3 text-blue-400" />
+                <span className="text-blue-300">
+                  {hoverTemperatures 
+                    ? (language === 'zh' 
+                        ? `显示图表悬停数据 (${Object.keys(hoverTemperatures).length} 个通道)`
+                        : `Showing chart hover data (${Object.keys(hoverTemperatures).length} channels)`
+                      )
+                    : (language === 'zh' 
+                        ? '将鼠标悬停在温度图表上查看对应温度分布'
+                        : 'Hover over temperature chart to see corresponding temperature distribution'
+                      )
+                  }
+                </span>
+              </>
+            )}
+            {showCalibratedData && hasCalibrationData && (
+              <>
+                {useHoverData && <span className="text-blue-300">•</span>}
+                <Zap className="w-3 h-3 text-orange-400" />
+                <span className="text-orange-300">
+                  {language === 'zh' ? '显示校准后的温度分布' : 'Showing calibrated temperature distribution'}
+                </span>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* Main content - responsive layout */}
+      {/* Main content */}
       <div className="flex-1 flex gap-4 min-h-0">
-        {/* Drill visualization - takes most space */}
+        {/* Drill visualization */}
         <div className="flex-1 flex flex-col items-center">
           <div className="relative w-full max-w-xs h-full">
-            {/* Drill string SVG */}
             <div
               ref={drillRef}
               className="relative cursor-crosshair w-full h-full"
@@ -448,7 +516,6 @@ export default function DrillVisualization({
             >
               <svg viewBox="0 0 200 400" className="w-full h-full">
                 <defs>
-                  {/* Enhanced gradients */}
                   <linearGradient id="pipeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                     <stop offset="0%" style={{stopColor:'#c0c0c0'}}/>
                     <stop offset="50%" style={{stopColor:'#f0f0f0'}}/>
@@ -467,7 +534,6 @@ export default function DrillVisualization({
                     <stop offset="100%" style={{stopColor:'#333'}}/>
                   </linearGradient>
 
-                  {/* Enhanced dynamic temperature gradients with horizontal consideration */}
                   {generateDrillGradient(intersectingTemperatures, 'temperatureGradient')}
                   {generateDrillGradient(
                     intersectingTemperatures.filter(temp => temp.y >= 85), 
@@ -481,14 +547,14 @@ export default function DrillVisualization({
                       stroke="#666" 
                       strokeWidth="2"/>
                 
-                {/* Enhanced temperature overlay */}
+                {/* Temperature overlay */}
                 {intersectingTemperatures.length > 0 && (
                   <rect x="75" y="20" width="50" height="320" 
                         fill="url(#temperatureGradient)" 
                         stroke="none"/>
                 )}
                 
-                {/* Spiral blades - simplified for performance */}
+                {/* Spiral blades */}
                 <g id="leftBlades">
                   {Array.from({ length: 8 }, (_, i) => (
                     <path key={i} d={`M 75 ${40 + i * 40} Q 65 ${42 + i * 40} 60 ${45 + i * 40} L 65 ${50 + i * 40} Q 70 ${47 + i * 40} 75 ${50 + i * 40}`} 
@@ -503,7 +569,7 @@ export default function DrillVisualization({
                   ))}
                 </g>
                 
-                {/* Thread lines - reduced for performance */}
+                {/* Thread lines */}
                 <g id="threadLines" stroke="#999" strokeWidth="0.5" opacity="0.6">
                   {Array.from({ length: 8 }, (_, i) => (
                     <line key={i} x1="75" y1={35 + i * 40} x2="125" y2={35 + i * 40}/>
@@ -516,7 +582,7 @@ export default function DrillVisualization({
                       stroke="#333" 
                       strokeWidth="2"/>
                 
-                {/* Enhanced drill bit temperature overlay */}
+                {/* Drill bit temperature overlay */}
                 {intersectingTemperatures.filter(temp => temp.y >= 85).length > 0 && (
                   <rect x="65" y="340" width="70" height="20" 
                         fill="url(#drillBitTemperatureGradient)" 
@@ -540,7 +606,7 @@ export default function DrillVisualization({
                       stroke="#ddd" strokeWidth="1" strokeDasharray="5,5" opacity="0.5"/>
               </svg>
               
-              {/* Sensor positions - optimized for touch */}
+              {/* Sensor positions */}
               {sensorPositions.map(sensorPos => {
                 const channel = enabledChannels.find(ch => ch.id === sensorPos.channelId);
                 if (!channel || !channel.enabled) return null;
@@ -549,6 +615,7 @@ export default function DrillVisualization({
                 const color = temperatureToColor(temperature);
                 const isIntersecting = isSensorIntersectingDrill(sensorPos);
                 const isHoverData = useHoverData && hoverTemperatures && hoverTemperatures[channel.id] !== undefined;
+                const isCalibrated = showCalibratedData && hasCalibrationData;
                 
                 return (
                   <div
@@ -557,7 +624,7 @@ export default function DrillVisualization({
                       draggedSensor === sensorPos.channelId ? 'scale-125 z-10' : 'hover:scale-110'
                     } ${isIntersecting ? 'border-white' : 'border-gray-400'} ${
                       compactMode ? 'w-4 h-4 text-xs' : 'w-5 h-5 text-xs'
-                    } ${isHoverData ? 'ring-2 ring-blue-400' : ''}`}
+                    } ${isHoverData ? 'ring-2 ring-blue-400' : ''} ${isCalibrated ? 'ring-2 ring-orange-400' : ''}`}
                     style={{
                       backgroundColor: color,
                       left: `${sensorPos.x}%`,
@@ -567,7 +634,9 @@ export default function DrillVisualization({
                         ? '0 0 8px rgba(255,255,255,0.5)' 
                         : isHoverData 
                           ? '0 0 8px rgba(59,130,246,0.5)'
-                          : '0 2px 4px rgba(0,0,0,0.3)',
+                          : isCalibrated
+                            ? '0 0 8px rgba(251,146,60,0.5)'
+                            : '0 2px 4px rgba(0,0,0,0.3)',
                       fontSize: compactMode ? '8px' : '10px',
                       minWidth: '16px',
                       minHeight: '16px'
@@ -577,7 +646,7 @@ export default function DrillVisualization({
                       e.preventDefault();
                       setDraggedSensor(sensorPos.channelId);
                     }}
-                    title={`${language === 'zh' ? '传感器' : 'Sensor'} ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : (language === 'zh' ? '无数据' : 'No Data')}${isIntersecting ? ` (${t('affectsDrillColor')})` : ''}${isHoverData ? ` (${language === 'zh' ? '图表悬停数据' : 'Chart hover data'})` : ''}`}
+                    title={`${language === 'zh' ? '传感器' : 'Sensor'} ${channel.id}: ${temperature !== null ? formatTemperature(temperature) : (language === 'zh' ? '无数据' : 'No Data')}${isIntersecting ? ` (${t('affectsDrillColor')})` : ''}${isHoverData ? ` (${language === 'zh' ? '图表悬停数据' : 'Chart hover data'})` : ''}${isCalibrated ? ` (${language === 'zh' ? '校准数据' : 'Calibrated data'})` : ''}`}
                   >
                     {channel.id}
                   </div>
@@ -587,7 +656,7 @@ export default function DrillVisualization({
           </div>
         </div>
 
-        {/* Sidebar - responsive width */}
+        {/* Sidebar */}
         <div className={`flex flex-col gap-3 ${compactMode ? 'w-32' : 'w-40'}`}>
           {/* Temperature scale */}
           {showTemperatureScale && (
@@ -601,7 +670,9 @@ export default function DrillVisualization({
                   <div
                     className="absolute inset-0 rounded"
                     style={{
-                      background: 'linear-gradient(to top, rgb(0,100,255), rgb(0,255,200), rgb(0,255,0), rgb(255,255,0), rgb(255,155,0), rgb(255,0,0))'
+                      background: showCalibratedData && hasCalibrationData
+                        ? 'linear-gradient(to top, rgb(255,165,0), rgb(255,200,0), rgb(255,255,100), rgb(255,200,100), rgb(255,165,100), rgb(255,100,0))'
+                        : 'linear-gradient(to top, rgb(0,100,255), rgb(0,255,200), rgb(0,255,0), rgb(255,255,0), rgb(255,155,0), rgb(255,0,0))'
                     }}
                   ></div>
                   
@@ -633,11 +704,16 @@ export default function DrillVisualization({
                     {language === 'zh' ? '悬停模式' : 'Hover Mode'}
                   </div>
                 )}
+                {showCalibratedData && hasCalibrationData && (
+                  <div className={`text-orange-400 ${compactMode ? 'text-xs' : 'text-xs'}`}>
+                    {language === 'zh' ? '校准模式' : 'Calibrated Mode'}
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* Sensor status - scrollable */}
+          {/* Sensor status */}
           <div className="bg-gray-700 rounded-lg p-3 flex-1 min-h-0">
             <h4 className={`font-semibold text-white mb-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
               {t('sensorStatus')}
@@ -650,6 +726,7 @@ export default function DrillVisualization({
                 const color = temperatureToColor(temperature);
                 const isIntersecting = sensorPos ? isSensorIntersectingDrill(sensorPos) : false;
                 const isHoverData = useHoverData && hoverTemperatures && hoverTemperatures[channel.id] !== undefined;
+                const isCalibrated = showCalibratedData && hasCalibrationData;
                 
                 return (
                   <div key={channel.id} className="flex items-center gap-2">
@@ -658,14 +735,16 @@ export default function DrillVisualization({
                         isIntersecting ? 'border-white' : 'border-gray-400'
                       } ${compactMode ? 'w-3 h-3 text-xs' : 'w-3 h-3 text-xs'} ${
                         isHoverData ? 'ring-1 ring-blue-400' : ''
-                      }`}
+                      } ${isCalibrated ? 'ring-1 ring-orange-400' : ''}`}
                       style={{ 
                         backgroundColor: color,
                         boxShadow: isIntersecting 
                           ? '0 0 4px rgba(255,255,255,0.5)' 
                           : isHoverData 
                             ? '0 0 4px rgba(59,130,246,0.5)'
-                            : 'none',
+                            : isCalibrated
+                              ? '0 0 4px rgba(251,146,60,0.5)'
+                              : 'none',
                         fontSize: '7px',
                         minWidth: '12px',
                         minHeight: '12px'
@@ -675,9 +754,10 @@ export default function DrillVisualization({
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className={`text-gray-300 ${compactMode ? 'text-xs' : 'text-xs'}`}>
+                      <div className={`text-gray-300 ${compactMode ? 'text-xs' : 'text-xs'} flex items-center gap-1`}>
                         Ch{channel.id}
-                        {isHoverData && <span className="text-blue-400 ml-1">*</span>}
+                        {isHoverData && <span className="text-blue-400">*</span>}
+                        {isCalibrated && <Zap className="w-2 h-2 text-orange-400" />}
                       </div>
                       {!compactMode && (
                         <div className="text-xs text-gray-400 truncate">
