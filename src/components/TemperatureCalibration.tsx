@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Zap, RotateCcw, Save, AlertTriangle, CheckCircle, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
+import { Settings, Zap, RotateCcw, Save, AlertTriangle, CheckCircle, Calculator, ChevronDown, ChevronUp, Target, Thermometer } from 'lucide-react';
 import { ChannelConfig } from '../types';
 import { useTranslation } from '../utils/i18n';
 
@@ -14,19 +14,25 @@ interface TemperatureCalibrationProps {
   onApplyCalibration: (offsets: CalibrationOffset[]) => void;
   language: 'zh' | 'en';
   maxChannels: number;
+  currentReadings?: Array<{ channel: number; temperature: number }>; // 新增：当前读数
 }
 
 export default function TemperatureCalibration({ 
   channels, 
   onApplyCalibration, 
   language, 
-  maxChannels 
+  maxChannels,
+  currentReadings = [] // 新增：当前读数
 }: TemperatureCalibrationProps) {
   const { t } = useTranslation(language);
   const [offsets, setOffsets] = useState<CalibrationOffset[]>([]);
   const [isApplying, setIsApplying] = useState(false);
   const [lastAppliedTime, setLastAppliedTime] = useState<number | null>(null);
-  const [isExpanded, setIsExpanded] = useState(false); // 默认折叠状态
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  // 新增：一键校准状态
+  const [oneClickTargetTemp, setOneClickTargetTemp] = useState<string>('25.0');
+  const [showOneClickCalibration, setShowOneClickCalibration] = useState(false);
 
   // 初始化校准偏移值
   useEffect(() => {
@@ -54,6 +60,75 @@ export default function TemperatureCalibration({
         ? { ...offset, enabled }
         : offset
     ));
+  };
+
+  // 新增：一键校准功能
+  const handleOneClickCalibration = () => {
+    const targetTemp = parseFloat(oneClickTargetTemp);
+    
+    if (isNaN(targetTemp)) {
+      alert(language === 'zh' ? '请输入有效的目标温度' : 'Please enter a valid target temperature');
+      return;
+    }
+
+    if (currentReadings.length === 0) {
+      alert(language === 'zh' ? '没有当前温度数据可用于校准' : 'No current temperature data available for calibration');
+      return;
+    }
+
+    // 计算每个通道的当前温度
+    const channelTemps = new Map<number, number>();
+    currentReadings.forEach(reading => {
+      channelTemps.set(reading.channel, reading.temperature);
+    });
+
+    // 检查有多少个通道有数据
+    const availableChannels = Array.from(channelTemps.keys()).filter(ch => ch <= maxChannels);
+    
+    if (availableChannels.length === 0) {
+      alert(language === 'zh' ? '没有可用的通道数据进行校准' : 'No available channel data for calibration');
+      return;
+    }
+
+    // 显示确认对话框
+    const confirmMessage = language === 'zh' 
+      ? `确定要将所有 ${availableChannels.length} 个通道的温度校准到 ${targetTemp}°C 吗？\n\n这将自动计算每个通道的偏移值：\n${availableChannels.map(ch => {
+          const currentTemp = channelTemps.get(ch) || 0;
+          const offset = targetTemp - currentTemp;
+          return `通道 ${ch}: ${currentTemp.toFixed(1)}°C → ${targetTemp}°C (偏移: ${offset > 0 ? '+' : ''}${offset.toFixed(1)}°C)`;
+        }).join('\n')}\n\n此操作将覆盖当前的校准设置。`
+      : `Are you sure you want to calibrate all ${availableChannels.length} channels to ${targetTemp}°C?\n\nThis will automatically calculate offset values for each channel:\n${availableChannels.map(ch => {
+          const currentTemp = channelTemps.get(ch) || 0;
+          const offset = targetTemp - currentTemp;
+          return `Channel ${ch}: ${currentTemp.toFixed(1)}°C → ${targetTemp}°C (Offset: ${offset > 0 ? '+' : ''}${offset.toFixed(1)}°C)`;
+        }).join('\n')}\n\nThis will override current calibration settings.`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    // 计算并应用偏移值
+    const newOffsets = offsets.map(offset => {
+      const currentTemp = channelTemps.get(offset.channelId);
+      if (currentTemp !== undefined && offset.channelId <= maxChannels) {
+        const calculatedOffset = targetTemp - currentTemp;
+        return {
+          ...offset,
+          offset: calculatedOffset,
+          enabled: true // 自动启用校准
+        };
+      }
+      return offset;
+    });
+
+    setOffsets(newOffsets);
+    
+    // 显示成功消息
+    const successMessage = language === 'zh' 
+      ? `成功设置 ${availableChannels.length} 个通道的校准值，目标温度: ${targetTemp}°C`
+      : `Successfully set calibration values for ${availableChannels.length} channels, target temperature: ${targetTemp}°C`;
+    
+    alert(successMessage);
   };
 
   const handleApplyCalibration = async () => {
@@ -95,6 +170,12 @@ export default function TemperatureCalibration({
 
   const hasNonZeroOffsets = () => {
     return offsets.some(offset => offset.offset !== 0);
+  };
+
+  // 获取当前温度显示
+  const getCurrentTemperature = (channelId: number): number | null => {
+    const reading = currentReadings.find(r => r.channel === channelId);
+    return reading ? reading.temperature : null;
   };
 
   return (
@@ -168,6 +249,101 @@ export default function TemperatureCalibration({
               {language === 'zh' ? '最后校准时间' : 'Last calibrated'}: {new Date(lastAppliedTime).toLocaleString()}
             </div>
           )}
+
+          {/* 一键校准功能 */}
+          <div className="p-4 bg-gradient-to-r from-purple-900 to-indigo-900 rounded-lg border border-purple-600">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <Target className="w-5 h-5 text-purple-400" />
+                <h3 className="text-lg font-semibold text-white">
+                  {language === 'zh' ? '一键温度校准' : 'One-Click Temperature Calibration'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowOneClickCalibration(!showOneClickCalibration)}
+                className="text-purple-300 hover:text-purple-200 transition-colors"
+              >
+                {showOneClickCalibration ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+            
+            {showOneClickCalibration && (
+              <div className="space-y-4">
+                <div className="text-purple-200 text-sm">
+                  {language === 'zh' 
+                    ? '输入目标温度，系统将自动计算所有通道的偏移值，使所有读数统一到目标温度。'
+                    : 'Enter target temperature, system will automatically calculate offset values for all channels to unify all readings to the target temperature.'
+                  }
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-purple-200 mb-2">
+                      <Thermometer className="w-4 h-4 inline mr-1" />
+                      {language === 'zh' ? '目标温度 (°C)' : 'Target Temperature (°C)'}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={oneClickTargetTemp}
+                      onChange={(e) => setOneClickTargetTemp(e.target.value)}
+                      className="w-full px-3 py-2 bg-purple-800 border border-purple-600 rounded-lg text-white focus:ring-2 focus:ring-purple-400"
+                      placeholder="25.0"
+                    />
+                  </div>
+                  
+                  <div className="flex items-end">
+                    <button
+                      onClick={handleOneClickCalibration}
+                      disabled={currentReadings.length === 0}
+                      className="flex items-center gap-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                    >
+                      <Target className="w-4 h-4" />
+                      {language === 'zh' ? '一键校准' : 'One-Click Calibrate'}
+                    </button>
+                  </div>
+                  
+                  <div className="text-sm text-purple-300">
+                    <div className="font-medium">{language === 'zh' ? '当前数据状态:' : 'Current Data Status:'}</div>
+                    <div>
+                      {currentReadings.length > 0 
+                        ? `${currentReadings.length} ${language === 'zh' ? '个通道有数据' : 'channels with data'}`
+                        : (language === 'zh' ? '无当前数据' : 'No current data')
+                      }
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 当前温度预览 */}
+                {currentReadings.length > 0 && (
+                  <div className="p-3 bg-purple-800 rounded-lg">
+                    <div className="text-sm font-medium text-purple-200 mb-2">
+                      {language === 'zh' ? '当前温度读数:' : 'Current Temperature Readings:'}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+                      {currentReadings
+                        .filter(reading => reading.channel <= maxChannels)
+                        .sort((a, b) => a.channel - b.channel)
+                        .map(reading => {
+                          const targetTemp = parseFloat(oneClickTargetTemp) || 25;
+                          const offset = targetTemp - reading.temperature;
+                          return (
+                            <div key={reading.channel} className="bg-purple-700 rounded p-2">
+                              <div className="text-purple-200">Ch{reading.channel}</div>
+                              <div className="text-white font-mono">{reading.temperature.toFixed(1)}°C</div>
+                              <div className={`text-xs ${offset > 0 ? 'text-green-300' : offset < 0 ? 'text-red-300' : 'text-gray-300'}`}>
+                                {offset > 0 ? '+' : ''}{offset.toFixed(1)}°C
+                              </div>
+                            </div>
+                          );
+                        })
+                      }
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* 快速操作 */}
           <div className="p-4 bg-gray-700 rounded-lg">
@@ -252,6 +428,7 @@ export default function TemperatureCalibration({
                 if (!channel) return null;
                 
                 const isLocked = channel.id > maxChannels;
+                const currentTemp = getCurrentTemperature(offset.channelId);
                 
                 return (
                   <div
@@ -285,6 +462,14 @@ export default function TemperatureCalibration({
                       )}
                     </div>
                     
+                    {/* 当前温度显示 */}
+                    {!isLocked && currentTemp !== null && (
+                      <div className="mb-2 p-2 bg-gray-600 rounded text-xs">
+                        <div className="text-gray-400">{language === 'zh' ? '当前温度' : 'Current Temp'}</div>
+                        <div className="text-white font-mono">{currentTemp.toFixed(1)}°C</div>
+                      </div>
+                    )}
+                    
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">
                         {language === 'zh' ? '校准偏移值 (°C)' : 'Calibration Offset (°C)'}
@@ -302,7 +487,13 @@ export default function TemperatureCalibration({
                     
                     {offset.offset !== 0 && offset.enabled && !isLocked && (
                       <div className="mt-2 text-xs text-orange-400">
-                        {language === 'zh' ? '校准后' : 'After calibration'}: T + ({offset.offset > 0 ? '+' : ''}{offset.offset})°C
+                        {language === 'zh' ? '校准后' : 'After calibration'}: 
+                        {currentTemp !== null && (
+                          <span className="ml-1 font-mono">
+                            {(currentTemp + offset.offset).toFixed(1)}°C
+                          </span>
+                        )}
+                        <div>T + ({offset.offset > 0 ? '+' : ''}{offset.offset})°C</div>
                       </div>
                     )}
                   </div>
@@ -320,12 +511,12 @@ export default function TemperatureCalibration({
               </span>
             </div>
             <ul className="text-blue-300 text-sm space-y-1">
+              <li>• <strong>{language === 'zh' ? '一键校准' : 'One-Click Calibration'}</strong>: {language === 'zh' ? '自动计算所有通道偏移值，统一到目标温度' : 'Automatically calculate offset values for all channels to unify to target temperature'}</li>
               <li>• <strong>{language === 'zh' ? '校准公式' : 'Calibration Formula'}</strong>: {language === 'zh' ? '校准后温度 = 原始温度 + 偏移值' : 'Calibrated Temperature = Original Temperature + Offset'}</li>
               <li>• <strong>{language === 'zh' ? '正偏移值' : 'Positive Offset'}</strong>: {language === 'zh' ? '增加温度读数（如传感器读数偏低）' : 'Increases temperature reading (if sensor reads low)'}</li>
               <li>• <strong>{language === 'zh' ? '负偏移值' : 'Negative Offset'}</strong>: {language === 'zh' ? '减少温度读数（如传感器读数偏高）' : 'Decreases temperature reading (if sensor reads high)'}</li>
               <li>• <strong>{language === 'zh' ? '应用范围' : 'Application Scope'}</strong>: {language === 'zh' ? '校准将应用到当前会话的所有历史数据' : 'Calibration applies to all historical data in current session'}</li>
               <li>• <strong>{language === 'zh' ? '数据导出' : 'Data Export'}</strong>: {language === 'zh' ? 'CSV导出将包含原始温度和校准后温度两列' : 'CSV export will include both original and calibrated temperature columns'}</li>
-              <li>• <strong>{language === 'zh' ? '曲线显示' : 'Chart Display'}</strong>: {language === 'zh' ? '可在显示控制面板中切换查看原始/校准数据' : 'Switch between original/calibrated data view in display controls'}</li>
             </ul>
           </div>
         </div>

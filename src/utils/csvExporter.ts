@@ -20,6 +20,12 @@ export interface ExportData {
       }>;
       totalActiveDuration: number;
       totalPauseDuration: number;
+      continueWritingEvents?: Array<{
+        timestamp: string;
+        fileName: string;
+        recordCount: number;
+        channelMismatch: boolean;
+      }>; // 新增：继续写入事件记录
     };
     calibrationInfo?: {
       hasCalibrationData: boolean;
@@ -42,12 +48,19 @@ function processSessionEvents(sessionEvents: Array<{
   }>;
   totalActiveDuration: number;
   totalPauseDuration: number;
+  continueWritingEvents: Array<{
+    timestamp: string;
+    fileName: string;
+    recordCount: number;
+    channelMismatch: boolean;
+  }>;
 } {
   if (sessionEvents.length === 0) {
     return {
       pauseResumeEvents: [],
       totalActiveDuration: 0,
-      totalPauseDuration: 0
+      totalPauseDuration: 0,
+      continueWritingEvents: []
     };
   }
 
@@ -58,6 +71,13 @@ function processSessionEvents(sessionEvents: Array<{
     reason?: string;
   }> = [];
   
+  const continueWritingEvents: Array<{
+    timestamp: string;
+    fileName: string;
+    recordCount: number;
+    channelMismatch: boolean;
+  }> = [];
+  
   let totalActiveDuration = 0;
   let totalPauseDuration = 0;
   let lastActiveStart = 0;
@@ -66,6 +86,24 @@ function processSessionEvents(sessionEvents: Array<{
   for (let i = 0; i < sessionEvents.length; i++) {
     const event = sessionEvents[i];
     const nextEvent = sessionEvents[i + 1];
+
+    // 检查是否为继续写入事件
+    if (event.action === 'resume' && event.reason.includes('Continued from CSV import:')) {
+      // 解析继续写入信息
+      const reasonMatch = event.reason.match(/Continued from CSV import: (.+?) \((\d+) records\)(.*)/);
+      if (reasonMatch) {
+        const fileName = reasonMatch[1];
+        const recordCount = parseInt(reasonMatch[2]);
+        const channelMismatch = reasonMatch[3].includes('Channel count mismatch');
+        
+        continueWritingEvents.push({
+          timestamp: new Date(event.timestamp).toISOString(),
+          fileName,
+          recordCount,
+          channelMismatch
+        });
+      }
+    }
 
     switch (event.action) {
       case 'start':
@@ -82,11 +120,14 @@ function processSessionEvents(sessionEvents: Array<{
             }
           }
           
-          events.push({
-            timestamp: new Date(event.timestamp).toISOString(),
-            action: 'resume',
-            reason: event.reason
-          });
+          // 只有非继续写入的恢复事件才记录
+          if (!event.reason.includes('Continued from CSV import:')) {
+            events.push({
+              timestamp: new Date(event.timestamp).toISOString(),
+              action: 'resume',
+              reason: event.reason
+            });
+          }
         }
         break;
 
@@ -119,7 +160,8 @@ function processSessionEvents(sessionEvents: Array<{
   return {
     pauseResumeEvents: events,
     totalActiveDuration: Math.max(0, totalActiveDuration),
-    totalPauseDuration
+    totalPauseDuration,
+    continueWritingEvents
   };
 }
 
@@ -157,35 +199,53 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   }
   
   // Add session information
-  if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
+  if (metadata.sessionInfo.pauseResumeEvents.length > 0 || metadata.sessionInfo.continueWritingEvents?.length > 0) {
     csvContent += '#\n';
     csvContent += '# Session Information:\n';
     csvContent += `# Total Active Recording Duration: ${Math.round(metadata.sessionInfo.totalActiveDuration)} seconds\n`;
     csvContent += `# Total Pause Duration: ${Math.round(metadata.sessionInfo.totalPauseDuration)} seconds\n`;
     csvContent += `# Number of Pause/Resume Events: ${metadata.sessionInfo.pauseResumeEvents.length}\n`;
-    csvContent += '#\n';
-    csvContent += '# Pause/Resume Events:\n';
     
-    metadata.sessionInfo.pauseResumeEvents.forEach((event, index) => {
-      if (event.action === 'pause') {
-        csvContent += `# ${index + 1}. Paused at: ${event.timestamp}`;
-        if (event.duration) {
-          csvContent += ` (Duration: ${event.duration} seconds)`;
-        }
-        if (event.reason) {
-          csvContent += ` - Reason: ${event.reason}`;
-        }
-        csvContent += '\n';
-      } else {
-        csvContent += `# ${index + 1}. Resumed at: ${event.timestamp}`;
-        if (event.reason) {
-          csvContent += ` - Reason: ${event.reason}`;
+    // 新增：继续写入事件信息
+    if (metadata.sessionInfo.continueWritingEvents && metadata.sessionInfo.continueWritingEvents.length > 0) {
+      csvContent += `# Number of Continue Writing Events: ${metadata.sessionInfo.continueWritingEvents.length}\n`;
+      csvContent += '#\n';
+      csvContent += '# Continue Writing Events:\n';
+      metadata.sessionInfo.continueWritingEvents.forEach((event, index) => {
+        csvContent += `# ${index + 1}. File: ${event.fileName} at ${event.timestamp}\n`;
+        csvContent += `#    Records Added: ${event.recordCount}`;
+        if (event.channelMismatch) {
+          csvContent += ' (Channel count mismatch detected)';
         }
         csvContent += '\n';
-      }
-    });
+      });
+    }
+    
+    if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
+      csvContent += '#\n';
+      csvContent += '# Pause/Resume Events:\n';
+      
+      metadata.sessionInfo.pauseResumeEvents.forEach((event, index) => {
+        if (event.action === 'pause') {
+          csvContent += `# ${index + 1}. Paused at: ${event.timestamp}`;
+          if (event.duration) {
+            csvContent += ` (Duration: ${event.duration} seconds)`;
+          }
+          if (event.reason) {
+            csvContent += ` - Reason: ${event.reason}`;
+          }
+          csvContent += '\n';
+        } else {
+          csvContent += `# ${index + 1}. Resumed at: ${event.timestamp}`;
+          if (event.reason) {
+            csvContent += ` - Reason: ${event.reason}`;
+          }
+          csvContent += '\n';
+        }
+      });
+    }
   } else {
-    csvContent += '# Session Information: Continuous recording (no user-initiated pauses)\n';
+    csvContent += '# Session Information: Continuous recording (no user-initiated pauses or imports)\n';
   }
   
   csvContent += '#\n';
@@ -231,6 +291,11 @@ export function exportToCSV(data: ExportData, prefix: string = ''): void {
   if (metadata.sessionInfo.pauseResumeEvents.length > 0) {
     const pauseCount = metadata.sessionInfo.pauseResumeEvents.filter(e => e.action === 'pause').length;
     filename += `_${pauseCount}pauses`;
+  }
+  
+  // 新增：如果有继续写入事件，在文件名中标注
+  if (metadata.sessionInfo.continueWritingEvents && metadata.sessionInfo.continueWritingEvents.length > 0) {
+    filename += `_${metadata.sessionInfo.continueWritingEvents.length}imports`;
   }
   
   // 如果有校准数据，在文件名中标注

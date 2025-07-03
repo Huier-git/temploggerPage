@@ -135,6 +135,27 @@ return registerValue * 0.1;`,
   // 检查是否有校准数据
   const hasCalibrationData = readings.some(reading => reading.calibratedTemperature !== undefined);
 
+  // 新增：获取当前温度读数用于校准
+  const getCurrentReadingsForCalibration = () => {
+    if (readings.length === 0) return [];
+    
+    // 获取每个通道的最新温度读数
+    const latestReadings = new Map<number, number>();
+    
+    // 从最新的读数开始，找到每个通道的最新值
+    for (let i = readings.length - 1; i >= 0; i--) {
+      const reading = readings[i];
+      if (!latestReadings.has(reading.channel)) {
+        latestReadings.set(reading.channel, reading.temperature);
+      }
+    }
+    
+    return Array.from(latestReadings.entries()).map(([channel, temperature]) => ({
+      channel,
+      temperature
+    }));
+  };
+
   const toggleLanguage = () => {
     const newLang = language.current === 'zh' ? 'en' : 'zh';
     setLanguage({ current: newLang });
@@ -320,23 +341,67 @@ return registerValue * 0.1;`,
     }
   };
 
-  const handleImportData = async (file: File) => {
+  // 修改：增强CSV导入功能，支持继续写入选项
+  const handleImportData = async (file: File, continueWriting: boolean = false) => {
     try {
       const importedReadings = await importFromCSV(file);
-      replaceReadings(importedReadings);
-      setSessionEvents([]);
       
-      // 检查导入的数据是否包含校准信息
-      const hasImportedCalibration = importedReadings.some(reading => reading.calibratedTemperature !== undefined);
-      if (hasImportedCalibration) {
-        // 如果导入的数据包含校准信息，自动启用校准数据显示
-        setDisplayConfig(prev => ({
-          ...prev,
-          showCalibratedData: true
-        }));
-        alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')} (${language.current === 'zh' ? '包含校准数据' : 'including calibration data'})`);
+      if (continueWriting && readings.length > 0) {
+        // 继续写入模式：合并数据
+        const lastTimestamp = Math.max(...readings.map(r => r.timestamp));
+        const firstImportTimestamp = Math.min(...importedReadings.map(r => r.timestamp));
+        
+        // 检查通道数量匹配
+        const currentChannels = new Set(readings.map(r => r.channel));
+        const importChannels = new Set(importedReadings.map(r => r.channel));
+        const channelMismatch = currentChannels.size !== importChannels.size || 
+          ![...currentChannels].every(ch => importChannels.has(ch));
+        
+        // 合并数据
+        const combinedReadings = [...readings, ...importedReadings];
+        replaceReadings(combinedReadings);
+        
+        // 记录继续写入事件
+        const continueEvent = {
+          timestamp: Date.now(),
+          action: 'resume' as const,
+          reason: `Continued from CSV import: ${file.name} (${importedReadings.length} records)${channelMismatch ? ' - Channel count mismatch detected' : ''}`
+        };
+        setSessionEvents(prev => [...prev, continueEvent]);
+        
+        // 检查导入的数据是否包含校准信息
+        const hasImportedCalibration = importedReadings.some(reading => reading.calibratedTemperature !== undefined);
+        if (hasImportedCalibration) {
+          setDisplayConfig(prev => ({
+            ...prev,
+            showCalibratedData: true
+          }));
+        }
+        
+        let message = t('importSuccess') + ` ${importedReadings.length} ${t('records')} (${language.current === 'zh' ? '继续写入模式' : 'continue writing mode'})`;
+        if (channelMismatch) {
+          message += `\n${language.current === 'zh' ? '警告：通道数量不匹配' : 'Warning: Channel count mismatch'}`;
+        }
+        if (hasImportedCalibration) {
+          message += `\n${language.current === 'zh' ? '包含校准数据' : 'Including calibration data'}`;
+        }
+        alert(message);
       } else {
-        alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
+        // 替换模式：清空现有数据
+        replaceReadings(importedReadings);
+        setSessionEvents([]);
+        
+        // 检查导入的数据是否包含校准信息
+        const hasImportedCalibration = importedReadings.some(reading => reading.calibratedTemperature !== undefined);
+        if (hasImportedCalibration) {
+          setDisplayConfig(prev => ({
+            ...prev,
+            showCalibratedData: true
+          }));
+          alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')} (${language.current === 'zh' ? '包含校准数据' : 'including calibration data'})`);
+        } else {
+          alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
+        }
       }
     } catch (error) {
       alert(t('importFailed') + ': ' + (error as Error).message);
@@ -720,12 +785,13 @@ return registerValue * 0.1;`,
           </div>
         </div>
 
-        {/* 温度校准与预处理组件 */}
+        {/* 温度校准与预处理组件 - 传递当前读数 */}
         <TemperatureCalibration
           channels={channels}
           onApplyCalibration={handleApplyCalibration}
           language={language.current}
           maxChannels={serialConfig.registerCount}
+          currentReadings={getCurrentReadingsForCalibration()}
         />
 
         <SerialModbusConfiguration

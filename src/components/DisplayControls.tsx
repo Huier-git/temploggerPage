@@ -1,14 +1,14 @@
 import React from 'react';
-import { Monitor, Clock, Grid, Eye, BarChart3, TrendingUp, Upload, Zap } from 'lucide-react';
+import { Monitor, Clock, Grid, Eye, BarChart3, TrendingUp, Upload, Zap, Plus } from 'lucide-react';
 import { DisplayConfig } from '../types';
 import { useTranslation } from '../utils/i18n';
 
 interface DisplayControlsProps {
   config: DisplayConfig;
   onConfigChange: (config: DisplayConfig) => void;
-  onImportData?: (file: File) => void;
+  onImportData?: (file: File, continueWriting?: boolean) => void; // 修改：添加继续写入参数
   language: 'zh' | 'en';
-  hasCalibrationData?: boolean; // 新增：是否有校准数据
+  hasCalibrationData?: boolean;
 }
 
 export default function DisplayControls({ 
@@ -20,6 +20,7 @@ export default function DisplayControls({
 }: DisplayControlsProps) {
   const { t } = useTranslation(language);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [showImportOptions, setShowImportOptions] = React.useState(false); // 新增：显示导入选项
 
   const handleModeChange = (mode: 'full' | 'sliding') => {
     onConfigChange({
@@ -71,13 +72,27 @@ export default function DisplayControls({
     });
   };
 
+  // 修改：处理文件选择，支持导入模式选择
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && onImportData) {
-      onImportData(file);
       // 清空文件输入，允许重复选择同一文件
       event.target.value = '';
+      setShowImportOptions(true);
+      
+      // 临时存储文件引用
+      (window as any).__pendingImportFile = file;
     }
+  };
+
+  // 新增：处理导入模式选择
+  const handleImportModeSelect = (continueWriting: boolean) => {
+    const file = (window as any).__pendingImportFile;
+    if (file && onImportData) {
+      onImportData(file, continueWriting);
+      delete (window as any).__pendingImportFile;
+    }
+    setShowImportOptions(false);
   };
 
   return (
@@ -277,6 +292,68 @@ export default function DisplayControls({
             {t('supportImportingCSV')}
           </div>
         </div>
+
+        {/* 新增：导入模式选择对话框 */}
+        {showImportOptions && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 border border-gray-600 max-w-md w-full mx-4">
+              <h3 className="text-lg font-semibold text-white mb-4">
+                {language === 'zh' ? '选择导入模式' : 'Select Import Mode'}
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="text-sm text-gray-300 mb-4">
+                  {language === 'zh' 
+                    ? '请选择如何处理导入的CSV数据：'
+                    : 'Please select how to handle the imported CSV data:'
+                  }
+                </div>
+                
+                <button
+                  onClick={() => handleImportModeSelect(false)}
+                  className="flex items-center gap-3 w-full p-4 bg-gray-700 hover:bg-gray-600 rounded-lg border border-gray-600 transition-colors"
+                >
+                  <Upload className="w-5 h-5 text-blue-400" />
+                  <div className="text-left">
+                    <div className="font-medium text-white">
+                      {language === 'zh' ? '替换当前数据' : 'Replace Current Data'}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {language === 'zh' ? '清空现有数据，导入新数据' : 'Clear existing data and import new data'}
+                    </div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={() => handleImportModeSelect(true)}
+                  className="flex items-center gap-3 w-full p-4 bg-gray-700 hover:bg-gray-600 rounded-lg border border-gray-600 transition-colors"
+                >
+                  <Plus className="w-5 h-5 text-green-400" />
+                  <div className="text-left">
+                    <div className="font-medium text-white">
+                      {language === 'zh' ? '继续写入数据' : 'Continue Writing Data'}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {language === 'zh' ? '在现有数据基础上追加新数据' : 'Append new data to existing data'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+              
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => {
+                    setShowImportOptions(false);
+                    delete (window as any).__pendingImportFile;
+                  }}
+                  className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                >
+                  {language === 'zh' ? '取消' : 'Cancel'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
