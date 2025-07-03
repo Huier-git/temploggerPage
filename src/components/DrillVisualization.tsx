@@ -1,13 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TemperatureReading, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
-import { Thermometer, Move, RotateCcw, Eye, EyeOff, MousePointer, Zap } from 'lucide-react';
+import { Thermometer, Move, RotateCcw, Eye, EyeOff, MousePointer, Zap, Save, Upload, Download, AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../utils/i18n';
 
 interface SensorPosition {
   channelId: number;
   x: number;
   y: number;
+}
+
+interface SensorPreset {
+  name: string;
+  description: string;
+  positions: SensorPosition[];
+  channelCount: number;
+  createdAt: string;
+  version: string;
 }
 
 interface DrillVisualizationProps {
@@ -46,13 +55,40 @@ export default function DrillVisualization({
   const [showTemperatureScale, setShowTemperatureScale] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [useHoverData, setUseHoverData] = useState(false);
-  const [showCalibratedData, setShowCalibratedData] = useState(false); // 新增：校准数据显示开关
+  const [showCalibratedData, setShowCalibratedData] = useState(false);
+  const [showPresetManager, setShowPresetManager] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [presetDescription, setPresetDescription] = useState('');
+  const [savedPresets, setSavedPresets] = useState<SensorPreset[]>([]);
   const drillRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 检查是否有校准数据
   const hasCalibrationData = React.useMemo(() => {
     return readings.some(reading => reading.calibratedTemperature !== undefined);
   }, [readings]);
+
+  // 加载保存的预设
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('drillSensorPresets');
+      if (saved) {
+        setSavedPresets(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.error('Failed to load sensor presets:', error);
+    }
+  }, []);
+
+  // 保存预设到localStorage
+  const savePresetsToStorage = (presets: SensorPreset[]) => {
+    try {
+      localStorage.setItem('drillSensorPresets', JSON.stringify(presets));
+      setSavedPresets(presets);
+    } catch (error) {
+      console.error('Failed to save sensor presets:', error);
+    }
+  };
 
   useEffect(() => {
     const newEnabledChannels = channels.filter(channel => channel.enabled);
@@ -79,12 +115,10 @@ export default function DrillVisualization({
 
   // Get latest temperature data or hover data
   const getTemperature = (channelId: number): number | null => {
-    // 如果启用了悬停数据模式且有悬停数据，优先使用悬停数据
     if (useHoverData && hoverTemperatures && hoverTemperatures[channelId] !== undefined) {
       return hoverTemperatures[channelId];
     }
     
-    // 否则使用最新的实际数据
     const channelReadings = readings
       .filter(r => r.channel === channelId)
       .sort((a, b) => b.timestamp - a.timestamp);
@@ -93,7 +127,6 @@ export default function DrillVisualization({
     
     const latestReading = channelReadings[0];
     
-    // 根据校准数据显示开关选择温度值
     if (showCalibratedData && latestReading.calibratedTemperature !== undefined) {
       return latestReading.calibratedTemperature;
     }
@@ -119,49 +152,47 @@ export default function DrillVisualization({
     };
   };
 
-  // Enhanced temperature to color mapping with improved gradient
+  // 修正的温度到颜色映射 - 提高对比度
   const temperatureToColor = (temperature: number | null): string => {
     if (temperature === null) return '#6B7280';
     
     const { min, max } = getTemperatureRange();
     const normalized = Math.max(0, Math.min(1, (temperature - min) / (max - min)));
     
-    // 如果显示校准数据，使用橙色系渐变
+    // 提高颜色对比度的映射
     if (showCalibratedData && hasCalibrationData) {
-      if (normalized < 0.2) {
-        const t = normalized / 0.2;
-        return `rgb(${Math.round(255 - t * 100)}, ${Math.round(165 - t * 65)}, ${Math.round(0)})`;
-      } else if (normalized < 0.4) {
-        const t = (normalized - 0.2) / 0.2;
-        return `rgb(${Math.round(255)}, ${Math.round(100 + t * 65)}, ${Math.round(0)})`;
-      } else if (normalized < 0.6) {
-        const t = (normalized - 0.4) / 0.2;
-        return `rgb(${Math.round(255)}, ${Math.round(165)}, ${Math.round(0 + t * 100)})`;
-      } else if (normalized < 0.8) {
-        const t = (normalized - 0.6) / 0.2;
-        return `rgb(${Math.round(255 - t * 100)}, ${Math.round(165 - t * 65)}, ${Math.round(100)})`;
+      // 校准数据使用橙色系，增强对比度
+      if (normalized < 0.25) {
+        const t = normalized / 0.25;
+        return `rgb(${Math.round(100 + t * 155)}, ${Math.round(50 + t * 115)}, ${Math.round(0)})`;
+      } else if (normalized < 0.5) {
+        const t = (normalized - 0.25) / 0.25;
+        return `rgb(${Math.round(255)}, ${Math.round(165 + t * 90)}, ${Math.round(0 + t * 50)})`;
+      } else if (normalized < 0.75) {
+        const t = (normalized - 0.5) / 0.25;
+        return `rgb(${Math.round(255)}, ${Math.round(255 - t * 90)}, ${Math.round(50 + t * 100)})`;
       } else {
-        const t = (normalized - 0.8) / 0.2;
-        return `rgb(${Math.round(155 + t * 100)}, ${Math.round(100 - t * 100)}, ${Math.round(100 - t * 100)})`;
+        const t = (normalized - 0.75) / 0.25;
+        return `rgb(${Math.round(255 - t * 55)}, ${Math.round(165 - t * 165)}, ${Math.round(150 + t * 105)})`;
       }
     }
     
-    // 原始数据使用蓝-绿-黄-红渐变
+    // 原始数据使用蓝-绿-黄-红渐变，增强对比度
     if (normalized < 0.2) {
       const t = normalized / 0.2;
-      return `rgb(${Math.round(0 + t * 0)}, ${Math.round(100 + t * 155)}, ${Math.round(255 - t * 55)})`;
+      return `rgb(${Math.round(0)}, ${Math.round(100 + t * 155)}, ${Math.round(255)})`;
     } else if (normalized < 0.4) {
       const t = (normalized - 0.2) / 0.2;
-      return `rgb(${Math.round(0 + t * 0)}, ${Math.round(255 - t * 55)}, ${Math.round(200 - t * 200)})`;
+      return `rgb(${Math.round(0)}, ${Math.round(255)}, ${Math.round(255 - t * 255)})`;
     } else if (normalized < 0.6) {
       const t = (normalized - 0.4) / 0.2;
-      return `rgb(${Math.round(0 + t * 255)}, ${Math.round(200 + t * 55)}, ${Math.round(0)})`;
+      return `rgb(${Math.round(0 + t * 255)}, ${Math.round(255)}, ${Math.round(0)})`;
     } else if (normalized < 0.8) {
       const t = (normalized - 0.6) / 0.2;
-      return `rgb(${Math.round(255)}, ${Math.round(255 - t * 100)}, ${Math.round(0)})`;
+      return `rgb(${Math.round(255)}, ${Math.round(255 - t * 155)}, ${Math.round(0)})`;
     } else {
       const t = (normalized - 0.8) / 0.2;
-      return `rgb(${Math.round(255)}, ${Math.round(155 - t * 155)}, ${Math.round(0)})`;
+      return `rgb(${Math.round(255)}, ${Math.round(100 - t * 100)}, ${Math.round(0)})`;
     }
   };
 
@@ -190,88 +221,129 @@ export default function DrillVisualization({
     return inMainBody || inDrillBit;
   };
 
-  // Enhanced temperature gradient calculation
-  const getIntersectingTemperatures = () => {
-    const intersectingTemps: Array<{ 
-      y: number; 
-      x: number; 
-      temperature: number; 
-      color: string;
-      weight: number;
-    }> = [];
-    
-    sensorPositions.forEach(sensorPos => {
-      const channel = enabledChannels.find(ch => ch.id === sensorPos.channelId);
-      if (!channel || !channel.enabled) return;
-      
-      if (isSensorIntersectingDrill(sensorPos)) {
-        const temperature = getTemperature(channel.id);
-        if (temperature !== null) {
-          const centerX = 50;
-          const distanceFromCenter = Math.abs(sensorPos.x - centerX);
-          const weight = Math.max(0.1, 1 - (distanceFromCenter / 25));
-          
-          intersectingTemps.push({
-            y: sensorPos.y,
-            x: sensorPos.x,
-            temperature,
-            color: temperatureToColor(temperature),
-            weight
-          });
+  // 🔥 全新的多方向热传导算法 - 基于距离加权插值（包含钻头部分）
+  const calculateMultiDirectionalHeatConduction = () => {
+    const intersectingSensors = sensorPositions
+      .filter(pos => isSensorIntersectingDrill(pos))
+      .map(pos => {
+        const channel = enabledChannels.find(ch => ch.id === pos.channelId);
+        const temperature = channel ? getTemperature(channel.id) : null;
+        return temperature !== null ? { ...pos, temperature } : null;
+      })
+      .filter(sensor => sensor !== null) as Array<SensorPosition & { temperature: number }>;
+
+    if (intersectingSensors.length === 0) return { mainBodyGradient: null, drillBitGradient: null };
+
+    // 多方向热传导计算函数
+    const getTemperatureAtPosition = (x: number, y: number): number => {
+      if (intersectingSensors.length === 1) {
+        return intersectingSensors[0].temperature;
+      }
+
+      // 计算每个传感器对当前位置的影响
+      let totalWeightedTemperature = 0;
+      let totalWeight = 0;
+
+      intersectingSensors.forEach(sensor => {
+        // 计算欧几里得距离
+        const dx = x - sensor.x;
+        const dy = y - sensor.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // 避免除零错误，如果距离为0，直接返回该传感器的温度
+        if (distance < 0.1) {
+          return sensor.temperature;
         }
-      }
-    });
-    
-    return intersectingTemps.sort((a, b) => a.y - b.y);
-  };
 
-  // Enhanced gradient generation
-  const generateDrillGradient = (intersectingTemperatures: any[], gradientId: string) => {
-    if (intersectingTemperatures.length === 0) {
-      return (
-        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" style={{stopColor:'#c0c0c0', stopOpacity: 0.3}}/>
-          <stop offset="100%" style={{stopColor:'#a0a0a0', stopOpacity: 0.3}}/>
-        </linearGradient>
-      );
-    }
+        // 使用反距离加权插值 (Inverse Distance Weighting)
+        // 权重 = 1 / distance^p，其中p是幂参数（通常为1-3）
+        const power = 2; // 幂参数，控制距离衰减的速度
+        const weight = 1 / Math.pow(distance, power);
+        
+        totalWeightedTemperature += sensor.temperature * weight;
+        totalWeight += weight;
+      });
 
-    const sortedTemps = [...intersectingTemperatures].sort((a, b) => a.y - b.y);
-    
-    const gradientStops = [];
-    
-    for (let i = 0; i < sortedTemps.length; i++) {
-      const temp = sortedTemps[i];
-      const offset = `${temp.y}%`;
-      
-      let blendedColor = temp.color;
-      
-      const nearbyHorizontal = sortedTemps.filter(t => 
-        Math.abs(t.y - temp.y) < 10 && Math.abs(t.x - temp.x) > 5
-      );
-      
-      if (nearbyHorizontal.length > 0) {
-        const avgTemp = (temp.temperature + nearbyHorizontal.reduce((sum, t) => sum + t.temperature, 0)) / (nearbyHorizontal.length + 1);
-        blendedColor = temperatureToColor(avgTemp);
+      // 如果总权重为0（理论上不应该发生），返回平均温度
+      if (totalWeight === 0) {
+        return intersectingSensors.reduce((sum, sensor) => sum + sensor.temperature, 0) / intersectingSensors.length;
       }
+
+      return totalWeightedTemperature / totalWeight;
+    };
+
+    // 生成主体部分的温度分布网格 (Y: 5-85%)
+    const mainBodyGradientStops = [];
+    const mainBodyGridResolution = 50;
+    
+    for (let i = 0; i <= mainBodyGridResolution; i++) {
+      const y = 5 + (80 * i / mainBodyGridResolution); // 主体Y范围：5-85%
       
-      gradientStops.push(
+      // 计算该Y位置上钻具主体范围内的平均温度
+      const xSamples = 10;
+      let totalTemp = 0;
+      for (let j = 0; j <= xSamples; j++) {
+        const x = 37.5 + (25 * j / xSamples); // 主体X范围：37.5-62.5%
+        totalTemp += getTemperatureAtPosition(x, y);
+      }
+      const avgTemperature = totalTemp / (xSamples + 1);
+      
+      const color = temperatureToColor(avgTemperature);
+      
+      mainBodyGradientStops.push(
         <stop 
-          key={i} 
-          offset={offset} 
+          key={`main-${i}`} 
+          offset={`${(i / mainBodyGridResolution) * 100}%`} 
           style={{
-            stopColor: blendedColor, 
-            stopOpacity: temp.weight * 0.8
+            stopColor: color, 
+            stopOpacity: 0.85
           }}
         />
       );
     }
+
+    // 生成钻头部分的温度分布网格 (Y: 85-96.25%)
+    const drillBitGradientStops = [];
+    const drillBitGridResolution = 15;
     
-    return (
-      <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-        {gradientStops}
-      </linearGradient>
-    );
+    for (let i = 0; i <= drillBitGridResolution; i++) {
+      const y = 85 + (11.25 * i / drillBitGridResolution); // 钻头Y范围：85-96.25%
+      
+      // 计算该Y位置上钻头范围内的平均温度
+      const xSamples = 10;
+      let totalTemp = 0;
+      for (let j = 0; j <= xSamples; j++) {
+        const x = 32.5 + (35 * j / xSamples); // 钻头X范围：32.5-67.5%
+        totalTemp += getTemperatureAtPosition(x, y);
+      }
+      const avgTemperature = totalTemp / (xSamples + 1);
+      
+      const color = temperatureToColor(avgTemperature);
+      
+      drillBitGradientStops.push(
+        <stop 
+          key={`bit-${i}`} 
+          offset={`${(i / drillBitGridResolution) * 100}%`} 
+          style={{
+            stopColor: color, 
+            stopOpacity: 0.85
+          }}
+        />
+      );
+    }
+
+    return {
+      mainBodyGradient: (
+        <linearGradient id="multiDirectionalHeatGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          {mainBodyGradientStops}
+        </linearGradient>
+      ),
+      drillBitGradient: (
+        <linearGradient id="drillBitHeatGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+          {drillBitGradientStops}
+        </linearGradient>
+      )
+    };
   };
 
   // Handle sensor dragging
@@ -316,6 +388,113 @@ export default function DrillVisualization({
         y: Math.min(95, yPosition)
       };
     }));
+  };
+
+  // 保存当前预设
+  const saveCurrentPreset = () => {
+    if (!presetName.trim()) {
+      alert(language === 'zh' ? '请输入预设名称' : 'Please enter preset name');
+      return;
+    }
+
+    const newPreset: SensorPreset = {
+      name: presetName.trim(),
+      description: presetDescription.trim(),
+      positions: [...sensorPositions],
+      channelCount: enabledChannelCount,
+      createdAt: new Date().toISOString(),
+      version: '1.0'
+    };
+
+    const updatedPresets = [...savedPresets, newPreset];
+    savePresetsToStorage(updatedPresets);
+    
+    setPresetName('');
+    setPresetDescription('');
+    setShowPresetManager(false);
+    
+    alert(language === 'zh' ? '预设保存成功' : 'Preset saved successfully');
+  };
+
+  // 加载预设
+  const loadPreset = (preset: SensorPreset) => {
+    if (preset.channelCount !== enabledChannelCount) {
+      const message = language === 'zh' 
+        ? `预设通道数量(${preset.channelCount})与当前启用通道数量(${enabledChannelCount})不匹配，是否继续加载？`
+        : `Preset channel count (${preset.channelCount}) doesn't match current enabled channels (${enabledChannelCount}). Continue loading?`;
+      
+      if (!confirm(message)) return;
+    }
+
+    // 只加载匹配的通道位置
+    const newPositions = sensorPositions.map(pos => {
+      const presetPos = preset.positions.find(p => p.channelId === pos.channelId);
+      return presetPos || pos;
+    });
+
+    setSensorPositions(newPositions);
+    alert(language === 'zh' ? '预设加载成功' : 'Preset loaded successfully');
+  };
+
+  // 删除预设
+  const deletePreset = (index: number) => {
+    const message = language === 'zh' ? '确定要删除这个预设吗？' : 'Are you sure you want to delete this preset?';
+    if (confirm(message)) {
+      const updatedPresets = savedPresets.filter((_, i) => i !== index);
+      savePresetsToStorage(updatedPresets);
+    }
+  };
+
+  // 导出预设
+  const exportPresets = () => {
+    if (savedPresets.length === 0) {
+      alert(language === 'zh' ? '没有预设可以导出' : 'No presets to export');
+      return;
+    }
+
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      presets: savedPresets
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `drill_sensor_presets_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // 导入预设
+  const importPresets = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        
+        if (!data.presets || !Array.isArray(data.presets)) {
+          throw new Error('Invalid preset file format');
+        }
+
+        const importedPresets = data.presets as SensorPreset[];
+        const updatedPresets = [...savedPresets, ...importedPresets];
+        savePresetsToStorage(updatedPresets);
+        
+        alert(language === 'zh' 
+          ? `成功导入 ${importedPresets.length} 个预设` 
+          : `Successfully imported ${importedPresets.length} presets`
+        );
+      } catch (error) {
+        alert(language === 'zh' ? '导入失败：文件格式错误' : 'Import failed: Invalid file format');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   // Generate temperature scale
@@ -363,7 +542,16 @@ export default function DrillVisualization({
     };
   }, [draggedSensor]);
 
-  const intersectingTemperatures = getIntersectingTemperatures();
+  const intersectingTemperatures = sensorPositions
+    .filter(pos => isSensorIntersectingDrill(pos))
+    .map(pos => {
+      const channel = enabledChannels.find(ch => ch.id === pos.channelId);
+      const temperature = channel ? getTemperature(channel.id) : null;
+      return temperature !== null ? { ...pos, temperature } : null;
+    })
+    .filter(sensor => sensor !== null);
+
+  const { mainBodyGradient, drillBitGradient } = calculateMultiDirectionalHeatConduction();
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-[600px] flex flex-col">
@@ -381,7 +569,16 @@ export default function DrillVisualization({
         </div>
         
         <div className="flex items-center gap-2">
-          {/* 新增：校准数据切换开关 */}
+          {/* 预设管理按钮 */}
+          <button
+            onClick={() => setShowPresetManager(!showPresetManager)}
+            className="flex items-center gap-1 p-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors"
+            title={language === 'zh' ? '预设管理' : 'Preset Management'}
+          >
+            <Save className="w-4 h-4" />
+          </button>
+
+          {/* 校准数据切换开关 */}
           {hasCalibrationData && (
             <button
               onClick={() => setShowCalibratedData(!showCalibratedData)}
@@ -446,11 +643,107 @@ export default function DrillVisualization({
         </div>
       </div>
 
+      {/* 预设管理面板 */}
+      {showPresetManager && (
+        <div className="mb-4 p-4 bg-gray-700 rounded-lg border border-gray-600">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-white font-semibold">
+              {language === 'zh' ? '传感器位置预设管理' : 'Sensor Position Preset Management'}
+            </h4>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportPresets}
+                disabled={savedPresets.length === 0}
+                className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+              >
+                <Download className="w-3 h-3" />
+                {language === 'zh' ? '导出' : 'Export'}
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors"
+              >
+                <Upload className="w-3 h-3" />
+                {language === 'zh' ? '导入' : 'Import'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={importPresets}
+                className="hidden"
+              />
+            </div>
+          </div>
+
+          {/* 保存新预设 */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              placeholder={language === 'zh' ? '预设名称' : 'Preset name'}
+              className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm"
+            />
+            <input
+              type="text"
+              value={presetDescription}
+              onChange={(e) => setPresetDescription(e.target.value)}
+              placeholder={language === 'zh' ? '描述（可选）' : 'Description (optional)'}
+              className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm"
+            />
+            <button
+              onClick={saveCurrentPreset}
+              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition-colors"
+            >
+              {language === 'zh' ? '保存当前位置' : 'Save Current Positions'}
+            </button>
+          </div>
+
+          {/* 预设列表 */}
+          <div className="max-h-32 overflow-y-auto">
+            {savedPresets.length === 0 ? (
+              <div className="text-gray-400 text-center py-2 text-sm">
+                {language === 'zh' ? '暂无保存的预设' : 'No saved presets'}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {savedPresets.map((preset, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-600 rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white text-sm font-medium truncate">{preset.name}</div>
+                      <div className="text-gray-300 text-xs">
+                        {preset.channelCount} {language === 'zh' ? '个通道' : 'channels'} • {new Date(preset.createdAt).toLocaleDateString()}
+                        {preset.description && ` • ${preset.description}`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => loadPreset(preset)}
+                        className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition-colors"
+                      >
+                        {language === 'zh' ? '加载' : 'Load'}
+                      </button>
+                      <button
+                        onClick={() => deletePreset(index)}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+                      >
+                        {language === 'zh' ? '删除' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Instructions */}
       <div className="mb-3 text-center">
         <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
           <Move className="w-3 h-3" />
-          <span>{t('dragToAdjustPosition')}</span>
+          <span>{language === 'zh' ? '拖拽调整位置 • 多方向热传导计算（含钻头）' : 'Drag to adjust position • Multi-directional heat conduction (including drill bit)'}</span>
           {useHoverData && (
             <>
               <span>•</span>
@@ -534,11 +827,11 @@ export default function DrillVisualization({
                     <stop offset="100%" style={{stopColor:'#333'}}/>
                   </linearGradient>
 
-                  {generateDrillGradient(intersectingTemperatures, 'temperatureGradient')}
-                  {generateDrillGradient(
-                    intersectingTemperatures.filter(temp => temp.y >= 85), 
-                    'drillBitTemperatureGradient'
-                  )}
+                  {/* 主体部分热传导渐变 */}
+                  {mainBodyGradient}
+                  
+                  {/* 钻头部分热传导渐变 */}
+                  {drillBitGradient}
                 </defs>
                 
                 {/* Main drill body */}
@@ -547,10 +840,10 @@ export default function DrillVisualization({
                       stroke="#666" 
                       strokeWidth="2"/>
                 
-                {/* Temperature overlay */}
-                {intersectingTemperatures.length > 0 && (
+                {/* Multi-directional heat conduction overlay for main body */}
+                {mainBodyGradient && (
                   <rect x="75" y="20" width="50" height="320" 
-                        fill="url(#temperatureGradient)" 
+                        fill="url(#multiDirectionalHeatGradient)" 
                         stroke="none"/>
                 )}
                 
@@ -582,10 +875,10 @@ export default function DrillVisualization({
                       stroke="#333" 
                       strokeWidth="2"/>
                 
-                {/* Drill bit temperature overlay */}
-                {intersectingTemperatures.filter(temp => temp.y >= 85).length > 0 && (
+                {/* Multi-directional heat conduction overlay for drill bit */}
+                {drillBitGradient && (
                   <rect x="65" y="340" width="70" height="20" 
-                        fill="url(#drillBitTemperatureGradient)" 
+                        fill="url(#drillBitHeatGradient)" 
                         stroke="none"/>
                 )}
                 
@@ -671,8 +964,8 @@ export default function DrillVisualization({
                     className="absolute inset-0 rounded"
                     style={{
                       background: showCalibratedData && hasCalibrationData
-                        ? 'linear-gradient(to top, rgb(255,165,0), rgb(255,200,0), rgb(255,255,100), rgb(255,200,100), rgb(255,165,100), rgb(255,100,0))'
-                        : 'linear-gradient(to top, rgb(0,100,255), rgb(0,255,200), rgb(0,255,0), rgb(255,255,0), rgb(255,155,0), rgb(255,0,0))'
+                        ? 'linear-gradient(to top, rgb(100,50,0), rgb(255,165,0), rgb(255,255,50), rgb(255,165,150), rgb(200,0,150), rgb(255,0,255))'
+                        : 'linear-gradient(to top, rgb(0,100,255), rgb(0,255,255), rgb(0,255,0), rgb(255,255,0), rgb(255,100,0), rgb(255,0,0))'
                     }}
                   ></div>
                   
@@ -709,6 +1002,9 @@ export default function DrillVisualization({
                     {language === 'zh' ? '校准模式' : 'Calibrated Mode'}
                   </div>
                 )}
+                <div className={`text-green-400 ${compactMode ? 'text-xs' : 'text-xs'} mt-1`}>
+                  {language === 'zh' ? '多方向热传导+钻头' : 'Multi-directional+Bit'}
+                </div>
               </div>
             </div>
           )}
