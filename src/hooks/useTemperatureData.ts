@@ -116,6 +116,12 @@ export function useTemperatureData(
       ? newReadings.slice(-MAX_READINGS)
       : newReadings;
     
+    console.log('替换读数:', {
+      newReadingsLength: newReadings.length,
+      optimizedLength: optimizedReadings.length,
+      sampleData: optimizedReadings.slice(0, 3)
+    });
+    
     setReadings(optimizedReadings);
     setRawDataReadings([]); // Clear raw data when replacing readings
     console.log(`Data replaced, current data points: ${optimizedReadings.length}`);
@@ -385,28 +391,12 @@ export function useTemperatureData(
 
     return () => clearInterval(interval);
   }, [
-    connectionStatus.isConnected, 
-    recordingConfig.isRecording, 
-    recordingConfig.interval, 
+    connectionStatus.isConnected,
+    recordingConfig.isRecording,
+    recordingConfig.interval,
     testModeConfig.enabled,
     readTemperatureData
   ]);
-
-  // Memory usage monitoring
-  useEffect(() => {
-    const memoryCheck = setInterval(() => {
-      if (readings.length > 0) {
-        const memoryUsage = JSON.stringify(readings).length;
-        const memoryMB = (memoryUsage / 1024 / 1024).toFixed(2);
-        
-        if (readings.length % 10000 === 0) {
-          console.log(`Memory usage: ${readings.length} records, approximately ${memoryMB} MB`);
-        }
-      }
-    }, 30000);
-
-    return () => clearInterval(memoryCheck);
-  }, [readings.length]);
 
   return {
     readings,

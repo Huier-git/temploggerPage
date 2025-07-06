@@ -346,6 +346,12 @@ return registerValue * 0.1;`,
     try {
       const importedReadings = await importFromCSV(file);
       
+      console.log('CSV导入成功:', {
+        importedCount: importedReadings.length,
+        continueWriting,
+        currentCount: readings.length
+      });
+      
       if (continueWriting && readings.length > 0) {
         // 继续写入模式：合并数据
         const lastTimestamp = Math.max(...readings.map(r => r.timestamp));
@@ -388,7 +394,9 @@ return registerValue * 0.1;`,
         alert(message);
       } else {
         // 替换模式：清空现有数据
+        console.log('替换模式：清空现有数据并导入新数据');
         replaceReadings(importedReadings);
+        
         setSessionEvents([]);
         
         // 检查导入的数据是否包含校准信息
@@ -403,7 +411,20 @@ return registerValue * 0.1;`,
           alert(t('importSuccess') + ` ${importedReadings.length} ${t('records')}`);
         }
       }
+      
+      // 强制重新渲染图表组件 - 延迟执行确保状态更新完成
+      setTimeout(() => {
+        // 触发窗口resize事件强制图表重新计算
+        window.dispatchEvent(new Event('resize'));
+        
+        // 强制React重新渲染
+        setDisplayConfig(prev => ({ ...prev }));
+        
+        console.log('强制重新渲染完成，当前readings长度:', readings.length);
+      }, 200);
+      
     } catch (error) {
+      console.error('CSV导入失败:', error);
       alert(t('importFailed') + ': ' + (error as Error).message);
     }
   };
@@ -522,33 +543,39 @@ return registerValue * 0.1;`,
     setCalibrationOffsets(offsets);
 
     // 应用校准到所有现有读数
-    const calibratedReadings = readings.map(reading => {
-      const offset = offsets.find(o => o.channelId === reading.channel && o.enabled);
+    setReadings(currentReadings => {
+      const calibratedReadings = currentReadings.map(reading => {
+        const offset = offsets.find(o => o.channelId === reading.channel && o.enabled);
+        
+        if (offset) {
+          // 为启用校准的通道添加校准温度
+          return {
+            ...reading,
+            calibratedTemperature: reading.temperature + offset.offset
+          };
+        } else {
+          // 对于未启用校准的通道，移除校准温度（如果之前有的话）
+          const { calibratedTemperature, ...readingWithoutCalibration } = reading;
+          return readingWithoutCalibration;
+        }
+      });
+
+      console.log('校准后数据量:', calibratedReadings.length);
+      console.log('校准后样本数据:', calibratedReadings.slice(0, 3));
       
-      if (offset) {
-        // 为启用校准的通道添加校准温度
-        return {
-          ...reading,
-          calibratedTemperature: reading.temperature + offset.offset
-        };
-      } else {
-        // 对于未启用校准的通道，移除校准温度（如果之前有的话）
-        const { calibratedTemperature, ...readingWithoutCalibration } = reading;
-        return readingWithoutCalibration;
-      }
+      return calibratedReadings;
     });
 
-    console.log('校准后数据量:', calibratedReadings.length);
-    console.log('校准后样本数据:', calibratedReadings.slice(0, 3));
-
-    // 替换当前读数 - 这不会影响新数据的生成
-    replaceReadings(calibratedReadings);
-    
     // 自动启用校准数据显示
     setDisplayConfig(prev => ({
       ...prev,
       showCalibratedData: true
     }));
+    
+    // 强制重新渲染图表
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
 
     console.log(`校准应用成功，影响 ${offsets.filter(o => o.enabled).length} 个通道，处理了 ${calibratedReadings.length} 条历史记录`);
   };

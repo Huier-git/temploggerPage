@@ -54,12 +54,15 @@ export default function TemperatureChart({
   // Check if we have calibration data
   const hasCalibrationData = React.useMemo(() => {
     return filteredReadings.some(reading => reading.calibratedTemperature !== undefined);
-  }, [filteredReadings]);
+  }, [filteredReadings, readings]); // 添加readings依赖确保重新计算
 
   // Reset calibration toggle when no calibration data is available
   React.useEffect(() => {
     if (!hasCalibrationData) {
       setShowCalibratedData(false);
+    } else {
+      // 如果检测到校准数据，自动显示切换按钮
+      console.log('检测到校准数据，显示切换按钮');
     }
   }, [hasCalibrationData]);
 
@@ -71,9 +74,15 @@ export default function TemperatureChart({
 
   // Transform data for chart - 关键修复：确保数据结构正确且完整
   const chartData = React.useMemo(() => {
+    console.log('开始处理图表数据:', {
+      filteredReadingsLength: filteredReadings.length,
+      sampleData: filteredReadings.slice(0, 3)
+    });
+    
     const dataMap = new Map<number, any>();
     
     if (filteredReadings.length === 0) {
+      console.log('过滤后的读数为空，返回空数组');
       return [];
     }
     
@@ -109,9 +118,29 @@ export default function TemperatureChart({
       }
     });
     
-    return Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    const result = Array.from(dataMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+    
+    console.log('图表数据处理完成:', {
+      resultLength: result.length,
+      sampleResult: result.slice(0, 2),
+      dataMapSize: dataMap.size
+    });
+    
+    return result;
+    
+    return result;
   }, [filteredReadings, displayConfig.relativeTime, startTime]);
 
+  // 添加调试信息
+  React.useEffect(() => {
+    console.log('TemperatureChart 状态更新:', {
+      readingsLength: readings.length,
+      filteredReadingsLength: filteredReadings.length,
+      chartDataLength: chartData.length,
+      displayConfig: displayConfig.mode,
+      timeWindow: displayConfig.timeWindow
+    });
+  }, [readings.length, filteredReadings.length, chartData.length, displayConfig]);
   // Calculate Y-axis range
   const calculateYAxisDomain = React.useCallback((data: any[], channelsToUse: ChannelConfig[]) => {
     if (data.length === 0) return [0, 50];
@@ -205,18 +234,59 @@ export default function TemperatureChart({
       ? `channel${channel.id}_calibrated` 
       : `channel${channel.id}`;
     
-    const channelData = chartData.map(item => ({
-      ...item,
-      temperature: item[dataKey]
-    })).filter(item => item.temperature !== undefined);
+    // 修复：直接从原始数据中提取该通道的数据
+    const channelReadings = filteredReadings
+      .filter(reading => reading.channel === channel.id)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    
+    console.log(`通道 ${channel.id} 数据处理:`, {
+      channelReadings: channelReadings.length,
+      showCalibratedData,
+      hasCalibrationData
+    });
+    
+    const channelData = channelReadings.map(reading => {
+      const relativeTime = displayConfig.relativeTime 
+        ? Math.round((reading.timestamp - startTime) / 1000)
+        : reading.timestamp;
+      
+      // 根据校准设置选择温度值
+      const temperature = showCalibratedData && hasCalibrationData && reading.calibratedTemperature !== undefined
+        ? reading.calibratedTemperature
+        : reading.temperature;
+      
+      return {
+        timestamp: reading.timestamp,
+        relativeTime,
+        time: displayConfig.relativeTime 
+          ? `${Math.floor(relativeTime / 60)}:${(relativeTime % 60).toString().padStart(2, '0')}`
+          : new Date(reading.timestamp).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }),
+        temperature
+      };
+    });
 
     if (channelData.length === 0) {
+      console.log(`通道 ${channel.id} 无数据`);
       return (
         <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-64 flex items-center justify-center">
-          <p className="text-gray-400 text-sm">{channel.name} - {t('noData')}</p>
+          <div className="text-center">
+            <p className="text-gray-400 text-sm">{channel.name} - {t('noData')}</p>
+            <p className="text-gray-500 text-xs mt-1">
+              {language === 'zh' ? '该通道无数据' : 'No data for this channel'}
+            </p>
+          </div>
         </div>
       );
     }
+
+    console.log(`通道 ${channel.id} 最终数据:`, {
+      dataLength: channelData.length,
+      sampleData: channelData.slice(0, 2)
+    });
 
     const channelTemps = channelData.map(d => d.temperature).filter(t => !isNaN(t));
     const minTemp = Math.min(...channelTemps);
@@ -297,9 +367,30 @@ export default function TemperatureChart({
     return (
       <div className="bg-gray-800 rounded-lg border border-gray-700 h-[600px] flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">📊</div>
-          <p className="text-gray-400 text-lg">{t('noTemperatureData')}</p>
-          <p className="text-gray-500 text-sm mt-2">{t('startTestModeOrConnect')}</p>
+          {readings.length === 0 ? (
+            <>
+              <div className="text-6xl mb-4">📊</div>
+              <p className="text-gray-400 text-lg">{t('noTemperatureData')}</p>
+              <p className="text-gray-500 text-sm mt-2">{t('startTestModeOrConnect')}</p>
+            </>
+          ) : (
+            <>
+              <div className="text-6xl mb-4">⏳</div>
+              <p className="text-gray-400 text-lg">{language === 'zh' ? '数据加载中...' : 'Loading data...'}</p>
+              <p className="text-gray-500 text-sm mt-2">
+                {language === 'zh' 
+                  ? `原始数据: ${readings.length} 条，过滤后: ${filteredReadings.length} 条，图表数据: ${chartData.length} 条` 
+                  : `Raw: ${readings.length}, Filtered: ${filteredReadings.length}, Chart: ${chartData.length} records`
+                }
+              </p>
+              <div className="mt-4 text-xs text-gray-500">
+                <p>{language === 'zh' ? '显示模式' : 'Display mode'}: {displayConfig.mode}</p>
+                {displayConfig.mode === 'sliding' && (
+                  <p>{language === 'zh' ? '时间窗口' : 'Time window'}: {displayConfig.timeWindow} {language === 'zh' ? '分钟' : 'minutes'}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -308,6 +399,12 @@ export default function TemperatureChart({
   // Individual view
   if (displayConfig.viewMode === 'individual') {
     const enabledChannels = channels.filter(channel => channel.enabled);
+    
+    console.log('分析视图渲染:', {
+      enabledChannelsCount: enabledChannels.length,
+      totalReadings: readings.length,
+      filteredReadings: filteredReadings.length
+    });
     
     return (
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">

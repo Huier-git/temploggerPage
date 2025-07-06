@@ -236,34 +236,36 @@ export function useDataStorage() {
             
             let timestamp: number, channel: number, temperature: number, rawValue: number = 0, calibratedTemperature: number | undefined;
             
-            if (hasCalibrationColumn && columns.length >= 5) {
-              // 格式: Timestamp,Channel,Temperature,RawValue,CalibratedTemperature
-              [timestamp, channel, temperature, rawValue, calibratedTemperature] = [
-                parseInt(columns[0]),
-                parseInt(columns[1]),
-                parseFloat(columns[2]),
-                parseInt(columns[3]) || 0,
-                parseFloat(columns[4])
-              ];
-            } else if (columns.length >= 4) {
-              // 格式: Timestamp,Channel,Temperature,RawValue
-              [timestamp, channel, temperature, rawValue] = [
-                parseInt(columns[0]),
-                parseInt(columns[1]),
-                parseFloat(columns[2]),
-                parseInt(columns[3]) || 0
-              ];
-            } else {
-              // 格式: Timestamp,Channel,Temperature
-              [timestamp, channel, temperature] = [
-                parseInt(columns[0]),
-                parseInt(columns[1]),
-                parseFloat(columns[2])
-              ];
+            try {
+              if (hasCalibrationColumn && columns.length >= 5) {
+                // 格式: Timestamp,Channel,Temperature,RawValue,CalibratedTemperature
+                timestamp = parseFloat(columns[0]); // 使用parseFloat处理科学计数法
+                channel = parseInt(columns[1]);
+                temperature = parseFloat(columns[2]);
+                rawValue = parseInt(columns[3]) || 0;
+                calibratedTemperature = parseFloat(columns[4]);
+              } else if (columns.length >= 4) {
+                // 格式: Timestamp,Channel,Temperature,RawValue
+                timestamp = parseFloat(columns[0]); // 使用parseFloat处理科学计数法
+                channel = parseInt(columns[1]);
+                temperature = parseFloat(columns[2]);
+                rawValue = parseInt(columns[3]) || 0;
+              } else {
+                // 格式: Timestamp,Channel,Temperature
+                timestamp = parseFloat(columns[0]); // 使用parseFloat处理科学计数法
+                channel = parseInt(columns[1]);
+                temperature = parseFloat(columns[2]);
+                rawValue = Math.round(temperature * 10); // 估算原始值
+              }
+            } catch (parseError) {
+              console.warn(`解析第${i+1}行数据失败:`, line, parseError);
+              invalidCount++;
+              continue;
             }
             
             if (isNaN(timestamp) || isNaN(channel) || isNaN(temperature) ||
                 channel < 1 || channel > 16) {
+              console.warn(`第${i+1}行数据验证失败:`, { timestamp, channel, temperature });
               invalidCount++;
               continue;
             }
@@ -272,7 +274,7 @@ export function useDataStorage() {
               timestamp,
               channel,
               temperature,
-              rawValue: isNaN(rawValue) ? Math.round(temperature * 10) : rawValue
+              rawValue
             };
             
             // 如果有校准温度且有效，则添加
@@ -291,13 +293,16 @@ export function useDataStorage() {
 
           readings.sort((a, b) => a.timestamp - b.timestamp);
           
-          console.log(`CSV导入完成: ${validCount} 条有效数据, ${invalidCount} 条无效数据`);
+          console.log(`CSV解析完成: ${validCount} 条有效数据, ${invalidCount} 条无效数据`);
+          console.log('解析的数据样本:', readings.slice(0, 3));
+          
           if (hasCalibrationColumn) {
             console.log('检测到校准温度数据，已导入校准值');
           }
           
           resolve(readings);
         } catch (error) {
+          console.error('CSV解析错误:', error);
           reject(new Error(`CSV解析失败: ${error instanceof Error ? error.message : '未知错误'}`));
         }
       };
