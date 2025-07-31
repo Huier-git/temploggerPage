@@ -9,6 +9,7 @@ interface DisplayControlsProps {
   onImportData?: (file: File, continueWriting?: boolean) => void; // 修改：添加继续写入参数
   language: 'zh' | 'en';
   hasCalibrationData?: boolean;
+  isDarkMode: boolean;
 }
 
 export default function DisplayControls({ 
@@ -16,7 +17,8 @@ export default function DisplayControls({
   onConfigChange, 
   onImportData, 
   language,
-  hasCalibrationData = false 
+  hasCalibrationData = false,
+  isDarkMode
 }: DisplayControlsProps) {
   const { t } = useTranslation(language);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -96,16 +98,24 @@ export default function DisplayControls({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+    <div className={`rounded-lg p-4 border ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-center gap-3 mb-4">
         <Monitor className="w-4 h-4 text-cyan-400" />
-        <h2 className="text-lg font-semibold text-white">{t('displaySettings')}</h2>
+        <h2 className={`text-lg font-semibold ${
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>{t('displaySettings')}</h2>
       </div>
 
       <div className="space-y-4">
         {/* 视图模式选择 - 紧凑 */}
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className={`block text-sm font-medium mb-2 ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
             <BarChart3 className="w-4 h-4 inline mr-1" />
             {t('viewMode')}
           </label>
@@ -115,7 +125,10 @@ export default function DisplayControls({
               className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 config.viewMode === 'combined'
                   ? 'bg-cyan-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : `${isDarkMode 
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`
               }`}
             >
               <TrendingUp className="w-4 h-4" />
@@ -126,7 +139,10 @@ export default function DisplayControls({
               className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 config.viewMode === 'individual'
                   ? 'bg-cyan-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  : `${isDarkMode 
+                      ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`
               }`}
             >
               <BarChart3 className="w-4 h-4" />

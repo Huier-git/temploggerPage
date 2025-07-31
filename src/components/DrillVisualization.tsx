@@ -24,13 +24,15 @@ interface DrillVisualizationProps {
   channels: ChannelConfig[];
   language: 'zh' | 'en';
   hoverTemperatures?: { [channelId: number]: number } | null;
+  isDarkMode: boolean;
 }
 
 export default function DrillVisualization({ 
   readings, 
   channels, 
   language, 
-  hoverTemperatures 
+  hoverTemperatures,
+  isDarkMode
 }: DrillVisualizationProps) {
   const { t } = useTranslation(language);
   
@@ -554,12 +556,18 @@ export default function DrillVisualization({
   const { mainBodyGradient, drillBitGradient } = calculateMultiDirectionalHeatConduction();
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-[600px] flex flex-col">
+    <div className={`rounded-lg border p-4 h-[600px] flex flex-col ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Thermometer className="w-5 h-5 text-orange-400" />
-          <h3 className="text-lg font-bold text-white">{t('drillTemperatureDistribution')}</h3>
+          <h3 className={`text-lg font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('drillTemperatureDistribution')}
+          </h3>
           {showCalibratedData && hasCalibrationData && (
             <span className="text-orange-400 text-sm flex items-center gap-1">
               <Zap className="w-4 h-4" />
@@ -572,7 +580,11 @@ export default function DrillVisualization({
           {/* 预设管理按钮 */}
           <button
             onClick={() => setShowPresetManager(!showPresetManager)}
-            className="flex items-center gap-1 p-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded transition-colors"
+            className={`flex items-center gap-1 p-1.5 rounded transition-colors text-white ${
+              isDarkMode 
+                ? 'bg-purple-600 hover:bg-purple-700' 
+                : 'bg-purple-500 hover:bg-purple-600'
+            }`}
             title={language === 'zh' ? '预设管理' : 'Preset Management'}
           >
             <Save className="w-4 h-4" />
@@ -620,7 +632,11 @@ export default function DrillVisualization({
           
           <button
             onClick={() => setShowTemperatureScale(!showTemperatureScale)}
-            className="p-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors"
+            className={`p-1.5 rounded transition-colors text-white ${
+              isDarkMode 
+                ? 'bg-gray-700 hover:bg-gray-600' 
+                : 'bg-gray-500 hover:bg-gray-600'
+            }`}
             title={showTemperatureScale ? t('hideTemperatureScale') : t('showTemperatureScale')}
           >
             {showTemperatureScale ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -628,7 +644,11 @@ export default function DrillVisualization({
           
           <button
             onClick={() => setCompactMode(!compactMode)}
-            className="px-2 py-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded text-xs transition-colors"
+            className={`px-2 py-1.5 rounded text-xs transition-colors text-white ${
+              isDarkMode 
+                ? 'bg-gray-700 hover:bg-gray-600' 
+                : 'bg-gray-500 hover:bg-gray-600'
+            }`}
           >
             {compactMode ? t('detailed') : t('compact')}
           </button>
@@ -645,23 +665,35 @@ export default function DrillVisualization({
 
       {/* 预设管理面板 */}
       {showPresetManager && (
-        <div className="mb-4 p-4 bg-gray-700 rounded-lg border border-gray-600">
+        <div className={`mb-4 p-4 rounded-lg border ${
+          isDarkMode 
+            ? 'bg-gray-700 border-gray-600' 
+            : 'bg-gray-50 border-gray-200'
+        }`}>
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-white font-semibold">
+            <h4 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
               {language === 'zh' ? '传感器位置预设管理' : 'Sensor Position Preset Management'}
             </h4>
             <div className="flex items-center gap-2">
               <button
                 onClick={exportPresets}
                 disabled={savedPresets.length === 0}
-                className="flex items-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors text-white disabled:cursor-not-allowed ${
+                  savedPresets.length === 0
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                }`}
               >
                 <Download className="w-3 h-3" />
                 {language === 'zh' ? '导出' : 'Export'}
               </button>
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition-colors"
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors text-white ${
+                  isDarkMode 
+                    ? 'bg-blue-600 hover:bg-blue-700' 
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
               >
                 <Upload className="w-3 h-3" />
                 {language === 'zh' ? '导入' : 'Import'}
@@ -683,18 +715,30 @@ export default function DrillVisualization({
               value={presetName}
               onChange={(e) => setPresetName(e.target.value)}
               placeholder={language === 'zh' ? '预设名称' : 'Preset name'}
-              className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm"
+              className={`px-2 py-1 border rounded text-sm ${
+                isDarkMode 
+                  ? 'bg-gray-600 border-gray-500 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              }`}
             />
             <input
               type="text"
               value={presetDescription}
               onChange={(e) => setPresetDescription(e.target.value)}
               placeholder={language === 'zh' ? '描述（可选）' : 'Description (optional)'}
-              className="px-2 py-1 bg-gray-600 border border-gray-500 rounded text-white text-sm"
+              className={`px-2 py-1 border rounded text-sm ${
+                isDarkMode 
+                  ? 'bg-gray-600 border-gray-500 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              }`}
             />
             <button
               onClick={saveCurrentPreset}
-              className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm transition-colors"
+              className={`px-3 py-1 rounded text-sm transition-colors text-white ${
+                isDarkMode 
+                  ? 'bg-purple-600 hover:bg-purple-700' 
+                  : 'bg-purple-500 hover:bg-purple-600'
+              }`}
             >
               {language === 'zh' ? '保存当前位置' : 'Save Current Positions'}
             </button>
@@ -703,16 +747,20 @@ export default function DrillVisualization({
           {/* 预设列表 */}
           <div className="max-h-32 overflow-y-auto">
             {savedPresets.length === 0 ? (
-              <div className="text-gray-400 text-center py-2 text-sm">
+              <div className={`text-center py-2 text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 {language === 'zh' ? '暂无保存的预设' : 'No saved presets'}
               </div>
             ) : (
               <div className="space-y-1">
                 {savedPresets.map((preset, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-gray-600 rounded">
+                  <div key={index} className={`flex items-center justify-between p-2 rounded ${
+                    isDarkMode ? 'bg-gray-600' : 'bg-gray-100'
+                  }`}>
                     <div className="flex-1 min-w-0">
-                      <div className="text-white text-sm font-medium truncate">{preset.name}</div>
-                      <div className="text-gray-300 text-xs">
+                      <div className={`text-sm font-medium truncate ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                        {preset.name}
+                      </div>
+                      <div className={`text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                         {preset.channelCount} {language === 'zh' ? '个通道' : 'channels'} • {new Date(preset.createdAt).toLocaleDateString()}
                         {preset.description && ` • ${preset.description}`}
                       </div>
@@ -720,13 +768,21 @@ export default function DrillVisualization({
                     <div className="flex items-center gap-1 ml-2">
                       <button
                         onClick={() => loadPreset(preset)}
-                        className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition-colors"
+                        className={`px-2 py-1 rounded text-xs transition-colors text-white ${
+                          isDarkMode 
+                            ? 'bg-green-600 hover:bg-green-700' 
+                            : 'bg-green-500 hover:bg-green-600'
+                        }`}
                       >
                         {language === 'zh' ? '加载' : 'Load'}
                       </button>
                       <button
                         onClick={() => deletePreset(index)}
-                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors"
+                        className={`px-2 py-1 rounded text-xs transition-colors text-white ${
+                          isDarkMode 
+                            ? 'bg-red-600 hover:bg-red-700' 
+                            : 'bg-red-500 hover:bg-red-600'
+                        }`}
                       >
                         {language === 'zh' ? '删除' : 'Delete'}
                       </button>
@@ -741,7 +797,7 @@ export default function DrillVisualization({
 
       {/* Instructions */}
       <div className="mb-3 text-center">
-        <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+        <div className={`flex items-center justify-center gap-2 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
           <Move className="w-3 h-3" />
           <span>{language === 'zh' ? '拖拽调整位置 • 多方向热传导计算（含钻头）' : 'Drag to adjust position • Multi-directional heat conduction (including drill bit)'}</span>
           {useHoverData && (
@@ -763,12 +819,16 @@ export default function DrillVisualization({
 
       {/* 状态提示 */}
       {(useHoverData || (showCalibratedData && hasCalibrationData)) && (
-        <div className="mb-2 p-2 bg-blue-900 border border-blue-700 rounded-lg">
+        <div className={`mb-2 p-2 border rounded-lg ${
+          isDarkMode 
+            ? 'bg-blue-900 border-blue-700' 
+            : 'bg-blue-50 border-blue-200'
+        }`}>
           <div className="flex items-center gap-2 text-xs">
             {useHoverData && (
               <>
                 <MousePointer className="w-3 h-3 text-blue-400" />
-                <span className="text-blue-300">
+                <span className={isDarkMode ? 'text-blue-300' : 'text-blue-700'}>
                   {hoverTemperatures 
                     ? (language === 'zh' 
                         ? `显示图表悬停数据 (${Object.keys(hoverTemperatures).length} 个通道)`
@@ -786,7 +846,7 @@ export default function DrillVisualization({
               <>
                 {useHoverData && <span className="text-blue-300">•</span>}
                 <Zap className="w-3 h-3 text-orange-400" />
-                <span className="text-orange-300">
+                <span className={isDarkMode ? 'text-orange-300' : 'text-orange-700'}>
                   {language === 'zh' ? '显示校准后的温度分布' : 'Showing calibrated temperature distribution'}
                 </span>
               </>
@@ -953,8 +1013,12 @@ export default function DrillVisualization({
         <div className={`flex flex-col gap-3 ${compactMode ? 'w-32' : 'w-40'}`}>
           {/* Temperature scale */}
           {showTemperatureScale && (
-            <div className="bg-gray-700 rounded-lg p-3">
-              <h4 className={`font-semibold text-white mb-2 text-center ${compactMode ? 'text-xs' : 'text-sm'}`}>
+            <div className={`rounded-lg p-3 ${
+              isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+            }`}>
+              <h4 className={`font-semibold mb-2 text-center ${compactMode ? 'text-xs' : 'text-sm'} ${
+                isDarkMode ? 'text-white' : 'text-gray-900'
+              }`}>
                 {t('temperatureRange')}
               </h4>
               
@@ -989,7 +1053,7 @@ export default function DrillVisualization({
               
               {/* Statistics */}
               <div className="text-center mt-2">
-                <div className={`text-gray-400 ${compactMode ? 'text-xs' : 'text-xs'}`}>
+                <div className={`${compactMode ? 'text-xs' : 'text-xs'} ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {t('affecting')}: {intersectingTemperatures.length}/{enabledChannels.length}
                 </div>
                 {useHoverData && (
@@ -1002,7 +1066,7 @@ export default function DrillVisualization({
                     {language === 'zh' ? '校准模式' : 'Calibrated Mode'}
                   </div>
                 )}
-                <div className={`text-green-400 ${compactMode ? 'text-xs' : 'text-xs'} mt-1`}>
+                <div className={`${compactMode ? 'text-xs' : 'text-xs'} mt-1 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>
                   {language === 'zh' ? '多方向热传导+钻头' : 'Multi-directional+Bit'}
                 </div>
               </div>
@@ -1010,8 +1074,12 @@ export default function DrillVisualization({
           )}
 
           {/* Sensor status */}
-          <div className="bg-gray-700 rounded-lg p-3 flex-1 min-h-0">
-            <h4 className={`font-semibold text-white mb-2 ${compactMode ? 'text-xs' : 'text-sm'}`}>
+          <div className={`rounded-lg p-3 flex-1 min-h-0 ${
+            isDarkMode ? 'bg-gray-700' : 'bg-gray-100'
+          }`}>
+            <h4 className={`font-semibold mb-2 ${compactMode ? 'text-xs' : 'text-sm'} ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>
               {t('sensorStatus')}
             </h4>
             
@@ -1050,13 +1118,15 @@ export default function DrillVisualization({
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className={`text-gray-300 ${compactMode ? 'text-xs' : 'text-xs'} flex items-center gap-1`}>
+                      <div className={`${compactMode ? 'text-xs' : 'text-xs'} flex items-center gap-1 ${
+                        isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                      }`}>
                         Ch{channel.id}
                         {isHoverData && <span className="text-blue-400">*</span>}
                         {isCalibrated && <Zap className="w-2 h-2 text-orange-400" />}
                       </div>
                       {!compactMode && (
-                        <div className="text-xs text-gray-400 truncate">
+                        <div className={`text-xs truncate ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                           {temperature !== null ? formatTemperature(temperature) : '--'}
                         </div>
                       )}
@@ -1064,8 +1134,8 @@ export default function DrillVisualization({
                     
                     <div className={`px-1 py-0.5 rounded flex-shrink-0 ${
                       isIntersecting 
-                        ? 'bg-green-900 text-green-300' 
-                        : 'bg-gray-600 text-gray-400'
+                        ? isDarkMode ? 'bg-green-900 text-green-300' : 'bg-green-100 text-green-700'
+                        : isDarkMode ? 'bg-gray-600 text-gray-400' : 'bg-gray-200 text-gray-600'
                     }`} style={{ fontSize: compactMode ? '7px' : '8px' }}>
                       {isIntersecting ? '✓' : '○'}
                     </div>

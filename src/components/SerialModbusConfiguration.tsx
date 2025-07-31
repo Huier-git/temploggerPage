@@ -11,6 +11,7 @@ interface SerialModbusConfigurationProps {
   onDisconnect: () => void;
   language: 'zh' | 'en';
   sessionActive: boolean;
+  isDarkMode: boolean;
 }
 
 const BAUD_RATES = [9600, 19200, 38400, 57600, 115200];
@@ -34,7 +35,8 @@ export default function SerialModbusConfiguration({
   onConnect,
   onDisconnect,
   language,
-  sessionActive
+  sessionActive,
+  isDarkMode
 }: SerialModbusConfigurationProps) {
   const { t } = useTranslation(language);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -353,14 +355,20 @@ export default function SerialModbusConfiguration({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+    <div className={`rounded-lg p-6 border ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Settings className="w-5 h-5 text-blue-400" />
             <Zap className="w-5 h-5 text-orange-400" />
           </div>
-          <h2 className="text-xl font-semibold text-white">{t('serialModbusRTUConfig')}</h2>
+          <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('serialModbusRTUConfig')}
+          </h2>
         </div>
         
         <div className="flex items-center gap-4">
@@ -369,7 +377,11 @@ export default function SerialModbusConfiguration({
               value={connectionMode}
               onChange={(e) => setConnectionMode(e.target.value as 'webserial' | 'websocket')}
               disabled={connectionStatus.isConnected || isConnecting}
-              className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:ring-2 focus:ring-blue-500"
+              className={`px-3 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 ${
+                isDarkMode 
+                  ? 'bg-gray-700 border-gray-600 text-white' 
+                  : 'bg-white border-gray-300 text-gray-900'
+              }`}
             >
               <option value="webserial">Web Serial API</option>
               <option value="websocket">WebSocket Bridge</option>
@@ -386,7 +398,11 @@ export default function SerialModbusConfiguration({
                 min={1024}
                 max={65535}
                 disabled={connectionStatus.isConnected || isConnecting}
-                className="w-20 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:ring-2 focus:ring-blue-500"
+                className={`w-20 px-2 py-1 border rounded text-sm focus:ring-2 focus:ring-blue-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 placeholder="Port"
               />
             </div>
@@ -434,21 +450,21 @@ export default function SerialModbusConfiguration({
       </div>
 
       {/* Connection mode info */}
-      <div className="mb-6 p-3 bg-gray-700 rounded-lg">
+      <div className={`mb-6 p-3 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
         <div className="flex items-center gap-2 mb-2">
           {connectionMode === 'webserial' ? (
             <Settings className="w-4 h-4 text-blue-400" />
           ) : (
             <Globe className="w-4 h-4 text-green-400" />
           )}
-          <span className="text-white font-medium">
+          <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {connectionMode === 'webserial' 
               ? (language === 'zh' ? 'Web Serial API 模式' : 'Web Serial API Mode')
               : (language === 'zh' ? 'WebSocket 桥接模式' : 'WebSocket Bridge Mode')
             }
           </span>
         </div>
-        <div className="text-sm text-gray-300">
+        <div className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
           {connectionMode === 'webserial' ? (
             language === 'zh' 
               ? '直接通过浏览器连接串口设备（需要Chrome 89+或Edge 89+）'
@@ -463,40 +479,48 @@ export default function SerialModbusConfiguration({
 
       {/* Modbus RTU status display */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Activity className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-gray-300">{t('successfulTransactions')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('successfulTransactions')}
+            </span>
           </div>
           <div className="text-lg font-bold text-blue-400">
             {modbusStats.successCount}
           </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-yellow-400" />
-            <span className="text-sm font-medium text-gray-300">{t('errorCount')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('errorCount')}
+            </span>
           </div>
           <div className="text-lg font-bold text-yellow-400">
             {modbusStats.errorCount}
           </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Settings className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-medium text-gray-300">{t('slaveID')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('slaveID')}
+            </span>
           </div>
           <div className="text-lg font-bold text-purple-400">
             {modbusStats.slaveId}
           </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <CheckCircle className="w-4 h-4 text-green-400" />
-            <span className="text-sm font-medium text-gray-300">{t('lastTransaction')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('lastTransaction')}
+            </span>
           </div>
           <div className="text-sm font-bold text-green-400">
             {modbusStats.lastTransaction > 0 
@@ -510,17 +534,23 @@ export default function SerialModbusConfiguration({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Serial configuration */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">{t('serialParameters')}</h3>
+          <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('serialParameters')}
+          </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('baudRate')}
               </label>
               <select
                 value={config.baudRate}
                 onChange={(e) => handleInputChange('baudRate', parseInt(e.target.value))}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected || isConnecting}
               >
                 {BAUD_RATES.map(rate => (
@@ -530,13 +560,17 @@ export default function SerialModbusConfiguration({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('parity')}
               </label>
               <select
                 value={config.parity}
                 onChange={(e) => handleInputChange('parity', e.target.value as 'none' | 'even' | 'odd')}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected || isConnecting}
               >
                 <option value="none">{language === 'zh' ? '无' : 'None'}</option>
@@ -546,13 +580,17 @@ export default function SerialModbusConfiguration({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('dataBits')}
               </label>
               <select
                 value={config.dataBits}
                 onChange={(e) => handleInputChange('dataBits', parseInt(e.target.value) as 7 | 8)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected || isConnecting}
               >
                 <option value={7}>7 {language === 'zh' ? '位' : 'bits'}</option>
@@ -561,13 +599,17 @@ export default function SerialModbusConfiguration({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('stopBits')}
               </label>
               <select
                 value={config.stopBits}
                 onChange={(e) => handleInputChange('stopBits', parseInt(e.target.value) as 1 | 2)}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected || isConnecting}
               >
                 <option value={1}>1 {language === 'zh' ? '位' : 'bit'}</option>
@@ -579,11 +621,13 @@ export default function SerialModbusConfiguration({
 
         {/* Modbus configuration */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">{t('modbusRTUParameters')}</h3>
+          <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('modbusRTUParameters')}
+          </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('slaveID')}
               </label>
               <input
@@ -595,13 +639,17 @@ export default function SerialModbusConfiguration({
                 }))}
                 min={1}
                 max={247}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('functionCode')}
               </label>
               <select
@@ -610,7 +658,11 @@ export default function SerialModbusConfiguration({
                   ...prev,
                   selectedFunctionCode: parseInt(e.target.value)
                 }))}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
                 disabled={connectionStatus.isConnected}
               >
                 {FUNCTION_CODES.map(fc => (
@@ -622,7 +674,7 @@ export default function SerialModbusConfiguration({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('timeout')} (ms)
               </label>
               <input
@@ -635,12 +687,16 @@ export default function SerialModbusConfiguration({
                 min={100}
                 max={10000}
                 step={100}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('retryCount')}
               </label>
               <input
@@ -652,7 +708,11 @@ export default function SerialModbusConfiguration({
                 }))}
                 min={0}
                 max={10}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
               />
             </div>
           </div>
@@ -660,7 +720,9 @@ export default function SerialModbusConfiguration({
           {/* Offset address handling option */}
           <div className="mt-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-300">{t('autoHandleOffsetAddress')}</span>
+              <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                {t('autoHandleOffsetAddress')}
+              </span>
               <button
                 onClick={() => setModbusStats(prev => ({
                   ...prev,
@@ -680,7 +742,7 @@ export default function SerialModbusConfiguration({
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('offsetAddress')}
               </label>
               <input
@@ -689,14 +751,18 @@ export default function SerialModbusConfiguration({
                 onChange={(e) => handleInputChange('offsetAddress', parseInt(e.target.value) || 40001)}
                 min={0}
                 max={65535}
-                className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-orange-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                } ${
                   sessionActive ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
                 disabled={connectionStatus.isConnected || sessionActive}
               />
             </div>
             
-            <div className="text-xs text-gray-400">
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {language === 'zh' 
                 ? `启用时，地址≥${config.offsetAddress}将自动减去${config.offsetAddress}偏移` 
                 : `When enabled, addresses ≥${config.offsetAddress} will automatically subtract ${config.offsetAddress} offset`
@@ -707,11 +773,17 @@ export default function SerialModbusConfiguration({
       </div>
 
       {/* Register configuration */}
-      <div className="mt-6 p-4 bg-gray-700 rounded-lg border border-gray-600">
+      <div className={`mt-6 p-4 rounded-lg border ${
+        isDarkMode 
+          ? 'bg-gray-700 border-gray-600' 
+          : 'bg-gray-50 border-gray-200'
+      }`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Hash className="w-4 h-4 text-purple-400" />
-            <h3 className="text-lg font-semibold text-white">{t('registerConfiguration')}</h3>
+            <h3 className={`text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+              {t('registerConfiguration')}
+            </h3>
             {sessionActive && (
               <div className="px-2 py-1 bg-yellow-900 text-yellow-300 rounded text-xs">
                 {language === 'zh' ? '已锁定' : 'Locked'}
@@ -735,15 +807,15 @@ export default function SerialModbusConfiguration({
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm text-gray-300">
-            <span className={`px-2 py-1 rounded ${useCustomRegisters ? 'bg-purple-600' : 'bg-blue-600'}`}>
+          <div className={`flex items-center gap-2 text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+            <span className={`px-2 py-1 rounded text-white ${useCustomRegisters ? 'bg-purple-600' : 'bg-blue-600'}`}>
               {useCustomRegisters ? t('customRegisterMode') : t('consecutiveRegisterMode')}
             </span>
           </div>
 
           {useCustomRegisters ? (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('customRegisterAddresses')} ({language === 'zh' ? '用分号分隔，最多16个' : 'separated by semicolons, max 16'})
               </label>
               <input
@@ -751,15 +823,19 @@ export default function SerialModbusConfiguration({
                 value={customRegisters}
                 onChange={(e) => handleCustomRegistersChange(e.target.value)}
                 placeholder={language === 'zh' ? '例如: 40001;40003;40005;40010;40015' : 'e.g.: 40001;40003;40005;40010;40015'}
-                className={`w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                  isDarkMode 
+                    ? 'bg-gray-600 border-gray-500 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                } ${
                   sessionActive ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
                 disabled={connectionStatus.isConnected || isConnecting || sessionActive}
               />
               
               {parsedRegisters.length > 0 && (
-                <div className="mt-2 p-2 bg-gray-600 rounded">
-                  <div className="text-xs text-gray-300 mb-1">
+                <div className={`mt-2 p-2 rounded ${isDarkMode ? 'bg-gray-600' : 'bg-gray-100'}`}>
+                  <div className={`text-xs mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                     {language === 'zh' ? '已解析的寄存器地址:' : 'Parsed register addresses:'}
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -780,14 +856,18 @@ export default function SerialModbusConfiguration({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {t('startRegister')}
                 </label>
                 <input
                   type="number"
                   value={config.startRegister}
                   onChange={(e) => handleInputChange('startRegister', parseInt(e.target.value))}
-                  className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    isDarkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white' 
+                      : 'bg-white border-gray-300 text-gray-900'
+                  } ${
                     sessionActive ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                   min={0}
@@ -797,14 +877,18 @@ export default function SerialModbusConfiguration({
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {t('registerCount')}
                 </label>
                 <input
                   type="number"
                   value={config.registerCount}
                   onChange={(e) => handleInputChange('registerCount', parseInt(e.target.value))}
-                  className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    isDarkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white' 
+                      : 'bg-white border-gray-300 text-gray-900'
+                  } ${
                     sessionActive ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
                   min={1}
@@ -814,7 +898,7 @@ export default function SerialModbusConfiguration({
               </div>
               
               <div className="md:col-span-2">
-                <div className="text-sm text-gray-400">
+                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {language === 'zh' 
                     ? `使用连续寄存器模式: 从寄存器 ${config.startRegister} 开始读取 ${config.registerCount} 个连续寄存器 (${config.startRegister} - ${config.startRegister + config.registerCount - 1})`
                     : `Using consecutive register mode: reading ${config.registerCount} consecutive registers from ${config.startRegister} (${config.startRegister} - ${config.startRegister + config.registerCount - 1})`
@@ -836,17 +920,21 @@ export default function SerialModbusConfiguration({
 
       {/* Operation log */}
       <div className="mt-6">
-        <h4 className="text-lg font-semibold text-white mb-4">{t('operationLog')}</h4>
+        <h4 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+          {t('operationLog')}
+        </h4>
         
-        <div className="bg-gray-700 rounded-lg p-4 max-h-60 overflow-y-auto">
+        <div className={`rounded-lg p-4 max-h-60 overflow-y-auto ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           {operationLog.length === 0 ? (
-            <div className="text-gray-400 text-center py-4">
+            <div className={`text-center py-4 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {t('noOperationRecords')}
             </div>
           ) : (
             <div className="space-y-2">
               {operationLog.slice().reverse().map(log => (
-                <div key={log.id} className="flex items-center justify-between p-2 bg-gray-600 rounded">
+                <div key={log.id} className={`flex items-center justify-between p-2 rounded ${
+                  isDarkMode ? 'bg-gray-600' : 'bg-gray-200'
+                }`}>
                   <div className="flex items-center gap-3">
                     <div className={`w-2 h-2 rounded-full ${
                       log.status === 'success' ? 'bg-green-400' :
@@ -854,16 +942,16 @@ export default function SerialModbusConfiguration({
                     }`}></div>
                     
                     <div className="text-sm">
-                      <span className="text-white font-medium">
+                      <span className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
                         {log.type === 'read' ? t('read') : t('write')}
                       </span>
-                      <span className="text-gray-300 ml-2">
+                      <span className={`ml-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {log.message}
                       </span>
                     </div>
                   </div>
                   
-                  <div className="text-xs text-gray-400">
+                  <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                     {new Date(log.timestamp).toLocaleTimeString()}
                   </div>
                 </div>
@@ -875,12 +963,18 @@ export default function SerialModbusConfiguration({
 
       {/* Connection mode instructions */}
       {connectionMode === 'webserial' && !isWebSerialSupported && (
-        <div className="mt-4 p-3 bg-red-900 border border-red-700 rounded-lg">
+        <div className={`mt-4 p-3 border rounded-lg ${
+          isDarkMode 
+            ? 'bg-red-900 border-red-700' 
+            : 'bg-red-50 border-red-200'
+        }`}>
           <div className="flex items-center gap-2 mb-2">
             <XCircle className="w-4 h-4 text-red-400" />
-            <span className="text-red-300 font-medium">{t('webSerialNotSupported')}</span>
+            <span className={`font-medium ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
+              {t('webSerialNotSupported')}
+            </span>
           </div>
-          <div className="text-red-300 text-sm space-y-1">
+          <div className={`text-sm space-y-1 ${isDarkMode ? 'text-red-300' : 'text-red-700'}`}>
             <p>{language === 'zh' ? '您的浏览器不支持Web Serial API。请使用以下浏览器:' : 'Your browser does not support Web Serial API. Please use:'}</p>
             <p>• Chrome 89+ {language === 'zh' ? '或' : 'or'} Edge 89+</p>
             <p>• {language === 'zh' ? '确保在HTTPS环境下运行' : 'Ensure running in HTTPS environment'}</p>
@@ -890,14 +984,18 @@ export default function SerialModbusConfiguration({
       )}
 
       {connectionMode === 'websocket' && (
-        <div className="mt-4 p-3 bg-blue-900 border border-blue-700 rounded-lg">
+        <div className={`mt-4 p-3 border rounded-lg ${
+          isDarkMode 
+            ? 'bg-blue-900 border-blue-700' 
+            : 'bg-blue-50 border-blue-200'
+        }`}>
           <div className="flex items-center gap-2 mb-2">
             <Globe className="w-4 h-4 text-blue-400" />
-            <span className="text-blue-300 font-medium">
+            <span className={`font-medium ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
               {language === 'zh' ? 'WebSocket桥接模式说明' : 'WebSocket Bridge Mode Instructions'}
             </span>
           </div>
-          <div className="text-blue-300 text-sm space-y-1">
+          <div className={`text-sm space-y-1 ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
             <p>{language === 'zh' ? '1. 确保您已运行串口转WebSocket的后端程序' : '1. Ensure you have the serial-to-WebSocket backend program running'}</p>
             <p>{language === 'zh' ? '2. 后端程序应监听指定端口并转发Modbus数据' : '2. Backend program should listen on specified port and forward Modbus data'}</p>
             <p>{language === 'zh' ? '3. 点击连接将尝试连接到' : '3. Click connect to attempt connection to'} ws://localhost:{websocketPort}</p>
@@ -908,14 +1006,18 @@ export default function SerialModbusConfiguration({
 
       {/* General connection instructions */}
       {!connectionStatus.isConnected && !isConnecting && (
-        <div className="mt-4 p-3 bg-gray-700 border border-gray-600 rounded-lg">
+        <div className={`mt-4 p-3 border rounded-lg ${
+          isDarkMode 
+            ? 'bg-gray-700 border-gray-600' 
+            : 'bg-gray-100 border-gray-200'
+        }`}>
           <div className="flex items-center gap-2 mb-2">
             <AlertCircle className="w-4 h-4 text-gray-400" />
-            <span className="text-gray-300 font-medium">
+            <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
               {language === 'zh' ? '连接说明' : 'Connection Instructions'}
             </span>
           </div>
-          <div className="text-gray-300 text-sm space-y-1">
+          <div className={`text-sm space-y-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
             <p>{language === 'zh' ? '1. 确保您的Modbus RTU设备已连接' : '1. Ensure your Modbus RTU device is connected'}</p>
             <p>{language === 'zh' ? '2. 选择合适的连接模式（Web Serial或WebSocket）' : '2. Select appropriate connection mode (Web Serial or WebSocket)'}</p>
             <p>{language === 'zh' ? '3. 配置正确的串口参数和Modbus设置' : '3. Configure correct serial parameters and Modbus settings'}</p>

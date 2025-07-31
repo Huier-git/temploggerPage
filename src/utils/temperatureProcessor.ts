@@ -4,17 +4,30 @@
  * Resolution: 0.1°C
  */
 export function convertRawToTemperature(rawValue: number, conversionConfig?: { mode: 'builtin' | 'custom'; customFormula: string }): number {
+  // 严格验证输入参数
+  if (typeof rawValue !== 'number' || isNaN(rawValue) || !isFinite(rawValue)) {
+    console.error('Invalid raw value for temperature conversion:', rawValue);
+    return 0; // 返回安全的默认值
+  }
+  
+  // 确保rawValue在16位无符号整数范围内
+  const clampedValue = Math.max(0, Math.min(65535, Math.floor(rawValue)));
+  if (clampedValue !== rawValue) {
+    console.warn(`Raw value ${rawValue} clamped to ${clampedValue}`);
+  }
+
   if (!conversionConfig || conversionConfig.mode === 'builtin') {
     // 使用内置转换逻辑
-    if (rawValue > 32767) {
-      return (rawValue - 65536) * 0.1;
+    if (clampedValue > 32767) {
+      return (clampedValue - 65536) * 0.1;
     }
-    return rawValue * 0.1;
+    return clampedValue * 0.1;
   } else {
     // 使用自定义转换公式
     try {
-      const registerValue = rawValue;
+      const registerValue = clampedValue;
       const safeEval = new Function('registerValue', `
+        "use strict";
         ${conversionConfig.customFormula}
       `);
       
@@ -22,23 +35,23 @@ export function convertRawToTemperature(rawValue: number, conversionConfig?: { m
       
       if (typeof result !== 'number' || isNaN(result)) {
         console.error('自定义转换公式返回无效值，使用内置转换');
-        return convertRawToTemperature(rawValue, { mode: 'builtin', customFormula: '' });
+        return convertRawToTemperature(clampedValue, { mode: 'builtin', customFormula: '' });
       }
       
       return result;
     } catch (error) {
       console.error('自定义转换公式执行失败，使用内置转换:', error);
-      return convertRawToTemperature(rawValue, { mode: 'builtin', customFormula: '' });
+      return convertRawToTemperature(clampedValue, { mode: 'builtin', customFormula: '' });
     }
   }
 }
 
 /**
  * Validate temperature reading within reasonable bounds
- * 移除温度范围限制，允许所有数值
+ * 只检查数值有效性，不限制温度范围
  */
 export function isValidTemperature(temperature: number): boolean {
-  return !isNaN(temperature) && isFinite(temperature); // 只检查是否为有效数字
+  return typeof temperature === 'number' && !isNaN(temperature) && isFinite(temperature);
 }
 
 /**

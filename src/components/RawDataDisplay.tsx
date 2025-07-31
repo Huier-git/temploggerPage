@@ -7,9 +7,10 @@ interface RawDataDisplayProps {
   rawDataReadings: RawDataReading[];
   language: 'zh' | 'en';
   onClearRawData?: () => void;
+  isDarkMode: boolean;
 }
 
-export default function RawDataDisplay({ rawDataReadings, language, onClearRawData }: RawDataDisplayProps) {
+export default function RawDataDisplay({ rawDataReadings, language, onClearRawData, isDarkMode }: RawDataDisplayProps) {
   const { t } = useTranslation(language);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -90,7 +91,11 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+    <div className={`rounded-lg border p-4 ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       {/* 折叠标题栏 */}
       <div 
         className="flex items-center justify-between cursor-pointer"
@@ -98,7 +103,9 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
       >
         <div className="flex items-center gap-3">
           <Database className="w-5 h-5 text-cyan-400" />
-          <h3 className="text-xl font-semibold text-white">
+          <h3 className={`text-xl font-semibold ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>
             {language === 'zh' ? '串口原始数据监控' : 'Serial Raw Data Monitor'}
           </h3>
           <div className="px-2 py-1 bg-cyan-900 text-cyan-300 rounded text-xs font-medium">
@@ -108,15 +115,15 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
         
         <div className="flex items-center gap-3">
           {!isExpanded && rawDataReadings.length > 0 && (
-            <div className="text-sm text-gray-400">
+            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {language === 'zh' ? '最新' : 'Latest'}: {formatTimestamp(rawDataReadings[rawDataReadings.length - 1]?.timestamp)}
             </div>
           )}
           
           {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
+            <ChevronUp className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+            <ChevronDown className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           )}
         </div>
       </div>
@@ -132,7 +139,7 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
                 className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm transition-colors ${
                   showDetails 
                     ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                    : isDarkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                 }`}
               >
                 {showDetails ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -145,7 +152,11 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
               <select
                 value={maxDisplayCount}
                 onChange={(e) => setMaxDisplayCount(parseInt(e.target.value))}
-                className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:ring-2 focus:ring-cyan-500"
+                className={`px-3 py-1 border rounded text-sm focus:ring-2 focus:ring-cyan-500 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
               >
                 <option value={20}>20 {language === 'zh' ? '条' : 'records'}</option>
                 <option value={50}>50 {language === 'zh' ? '条' : 'records'}</option>
@@ -158,7 +169,11 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
               <button
                 onClick={exportRawDataToCSV}
                 disabled={rawDataReadings.length === 0}
-                className="flex items-center gap-2 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm transition-colors text-white disabled:cursor-not-allowed ${
+                  rawDataReadings.length === 0
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                }`}
               >
                 <Download className="w-4 h-4" />
                 {language === 'zh' ? '导出CSV' : 'Export CSV'}
@@ -167,7 +182,11 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
               <button
                 onClick={handleClearRawData}
                 disabled={rawDataReadings.length === 0}
-                className="flex items-center gap-2 px-3 py-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-sm transition-colors"
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm transition-colors text-white disabled:cursor-not-allowed ${
+                  rawDataReadings.length === 0
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'
+                }`}
               >
                 <Trash2 className="w-4 h-4" />
                 {language === 'zh' ? '清理' : 'Clear'}
@@ -178,20 +197,26 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
           {/* 数据统计 */}
           {rawDataReadings.length > 0 && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gray-700 rounded-lg p-3">
-                <div className="text-sm text-gray-400">{language === 'zh' ? '总记录数' : 'Total Records'}</div>
+              <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {language === 'zh' ? '总记录数' : 'Total Records'}
+                </div>
                 <div className="text-lg font-bold text-cyan-400">{rawDataReadings.length}</div>
               </div>
               
-              <div className="bg-gray-700 rounded-lg p-3">
-                <div className="text-sm text-gray-400">{language === 'zh' ? '活跃通道' : 'Active Channels'}</div>
+              <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {language === 'zh' ? '活跃通道' : 'Active Channels'}
+                </div>
                 <div className="text-lg font-bold text-green-400">
                   {new Set(rawDataReadings.map(r => r.channel)).size}
                 </div>
               </div>
               
-              <div className="bg-gray-700 rounded-lg p-3">
-                <div className="text-sm text-gray-400">{language === 'zh' ? '寄存器范围' : 'Register Range'}</div>
+              <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {language === 'zh' ? '寄存器范围' : 'Register Range'}
+                </div>
                 <div className="text-lg font-bold text-purple-400">
                   {rawDataReadings.length > 0 ? (
                     `${Math.min(...rawDataReadings.map(r => r.registerAddress))}-${Math.max(...rawDataReadings.map(r => r.registerAddress))}`
@@ -199,8 +224,10 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
                 </div>
               </div>
               
-              <div className="bg-gray-700 rounded-lg p-3">
-                <div className="text-sm text-gray-400">{language === 'zh' ? '最新时间' : 'Latest Time'}</div>
+              <div className={`rounded-lg p-3 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {language === 'zh' ? '最新时间' : 'Latest Time'}
+                </div>
                 <div className="text-sm font-bold text-yellow-400">
                   {rawDataReadings.length > 0 
                     ? new Date(Math.max(...rawDataReadings.map(r => r.timestamp))).toLocaleTimeString()
@@ -212,14 +239,14 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
           )}
 
           {/* 数据表格 */}
-          <div className="bg-gray-700 rounded-lg overflow-hidden">
+          <div className={`rounded-lg overflow-hidden ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
             {rawDataReadings.length === 0 ? (
               <div className="p-8 text-center">
                 <Database className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                <p className="text-gray-400 text-lg">
+                <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {language === 'zh' ? '暂无原始数据' : 'No raw data available'}
                 </p>
-                <p className="text-gray-500 text-sm mt-2">
+                <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                   {language === 'zh' 
                     ? '连接设备并开始数据采集后，原始Modbus数据将显示在这里'
                     : 'Raw Modbus data will appear here after connecting device and starting data collection'
@@ -229,25 +256,25 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
             ) : (
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-600 sticky top-0">
+                  <thead className={`sticky top-0 ${isDarkMode ? 'bg-gray-600' : 'bg-gray-200'}`}>
                     <tr>
-                      <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                      <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'zh' ? '时间' : 'Time'}
                       </th>
-                      <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                      <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'zh' ? '通道' : 'Channel'}
                       </th>
-                      <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                      <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'zh' ? '寄存器' : 'Register'}
                       </th>
-                      <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                      <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'zh' ? '原始值' : 'Raw Value'}
                       </th>
-                      <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                      <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'zh' ? '温度(°C)' : 'Temperature(°C)'}
                       </th>
                       {showDetails && (
-                        <th className="px-3 py-2 text-left text-gray-300 font-medium">
+                        <th className={`px-3 py-2 text-left font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                           {language === 'zh' ? '转换方法' : 'Conversion'}
                         </th>
                       )}
@@ -257,11 +284,13 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
                     {latestRawData.map((reading, index) => (
                       <tr 
                         key={`${reading.timestamp}-${reading.channel}`}
-                        className={`border-t border-gray-600 hover:bg-gray-600 ${
-                          index === 0 ? 'bg-gray-650' : ''
+                        className={`border-t hover:bg-opacity-50 ${
+                          isDarkMode 
+                            ? `border-gray-600 hover:bg-gray-600 ${index === 0 ? 'bg-gray-650' : ''}` 
+                            : `border-gray-300 hover:bg-gray-200 ${index === 0 ? 'bg-gray-50' : ''}`
                         }`}
                       >
-                        <td className="px-3 py-2 text-gray-300 font-mono text-xs">
+                        <td className={`px-3 py-2 font-mono text-xs ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                           {showDetails 
                             ? formatTimestamp(reading.timestamp)
                             : new Date(reading.timestamp).toLocaleTimeString()
@@ -278,7 +307,7 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
                         <td className="px-3 py-2 text-cyan-400 font-mono">
                           {reading.rawValue}
                           {showDetails && (
-                            <span className="text-gray-500 ml-2">
+                            <span className={`ml-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                               (0x{reading.rawValue.toString(16).toUpperCase().padStart(4, '0')})
                             </span>
                           )}
@@ -307,8 +336,8 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
 
           {/* 显示更多提示 */}
           {rawDataReadings.length > maxDisplayCount && (
-            <div className="text-center p-3 bg-gray-700 rounded-lg">
-              <p className="text-gray-400 text-sm">
+            <div className={`text-center p-3 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 {language === 'zh' 
                   ? `显示最新 ${maxDisplayCount} 条记录，共 ${rawDataReadings.length} 条记录`
                   : `Showing latest ${maxDisplayCount} records out of ${rawDataReadings.length} total records`
@@ -318,8 +347,12 @@ export default function RawDataDisplay({ rawDataReadings, language, onClearRawDa
           )}
 
           {/* 说明信息 */}
-          <div className="p-3 bg-blue-900 border border-blue-700 rounded-lg">
-            <div className="text-blue-300 text-sm space-y-1">
+          <div className={`p-3 border rounded-lg ${
+            isDarkMode 
+              ? 'bg-blue-900 border-blue-700' 
+              : 'bg-blue-50 border-blue-200'
+          }`}>
+            <div className={`text-sm space-y-1 ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
               <p><strong>{language === 'zh' ? '说明' : 'Note'}:</strong></p>
               <p>• <strong>{language === 'zh' ? '原始值' : 'Raw Value'}</strong>: {language === 'zh' ? '从Modbus寄存器直接读取的16位数值' : 'Raw 16-bit value read directly from Modbus register'}</p>
               <p>• <strong>{language === 'zh' ? '温度' : 'Temperature'}</strong>: {language === 'zh' ? '经过温度转换配置处理后的最终温度值' : 'Final temperature value after processing through temperature conversion configuration'}</p>

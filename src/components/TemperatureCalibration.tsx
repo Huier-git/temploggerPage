@@ -15,6 +15,7 @@ interface TemperatureCalibrationProps {
   language: 'zh' | 'en';
   maxChannels: number;
   currentReadings?: Array<{ channel: number; temperature: number }>; // 新增：当前读数
+  isDarkMode: boolean;
 }
 
 export default function TemperatureCalibration({ 
@@ -22,7 +23,8 @@ export default function TemperatureCalibration({
   onApplyCalibration, 
   language, 
   maxChannels,
-  currentReadings = [] // 新增：当前读数
+  currentReadings = [], // 新增：当前读数
+  isDarkMode
 }: TemperatureCalibrationProps) {
   const { t } = useTranslation(language);
   const [offsets, setOffsets] = useState<CalibrationOffset[]>([]);
@@ -179,7 +181,11 @@ export default function TemperatureCalibration({
   };
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+    <div className={`rounded-lg p-6 border ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       {/* 折叠标题栏 */}
       <div 
         className="flex items-center justify-between cursor-pointer"
@@ -190,7 +196,9 @@ export default function TemperatureCalibration({
             <Calculator className="w-5 h-5 text-orange-400" />
             <Settings className="w-5 h-5 text-blue-400" />
           </div>
-          <h2 className="text-xl font-semibold text-white">
+          <h2 className={`text-xl font-semibold ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>
             {language === 'zh' ? '温度校准与预处理' : 'Temperature Calibration & Preprocessing'}
           </h2>
           <div className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -204,7 +212,7 @@ export default function TemperatureCalibration({
         
         <div className="flex items-center gap-3">
           {!isExpanded && lastAppliedTime && (
-            <div className="text-sm text-green-400">
+            <div className={`text-sm ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>
               {language === 'zh' ? '最后校准' : 'Last calibrated'}: {new Date(lastAppliedTime).toLocaleTimeString()}
             </div>
           )}
@@ -233,9 +241,9 @@ export default function TemperatureCalibration({
           )}
           
           {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
+            <ChevronUp className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+            <ChevronDown className={`w-5 h-5 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`} />
           )}
         </div>
       </div>
@@ -245,23 +253,33 @@ export default function TemperatureCalibration({
         <div className="mt-6 space-y-6">
           {/* 状态信息 */}
           {lastAppliedTime && (
-            <div className="text-sm text-green-400 text-center">
+            <div className={`text-sm text-center ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>
               {language === 'zh' ? '最后校准时间' : 'Last calibrated'}: {new Date(lastAppliedTime).toLocaleString()}
             </div>
           )}
 
           {/* 一键校准功能 */}
-          <div className="p-4 bg-gradient-to-r from-purple-900 to-indigo-900 rounded-lg border border-purple-600">
+          <div className={`p-4 rounded-lg border ${
+            isDarkMode 
+              ? 'bg-gradient-to-r from-purple-900 to-indigo-900 border-purple-600' 
+              : 'bg-gradient-to-r from-purple-100 to-indigo-100 border-purple-300'
+          }`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
                 <Target className="w-5 h-5 text-purple-400" />
-                <h3 className="text-lg font-semibold text-white">
+                <h3 className={`text-lg font-semibold ${
+                  isDarkMode ? 'text-white' : 'text-gray-900'
+                }`}>
                   {language === 'zh' ? '一键温度校准' : 'One-Click Temperature Calibration'}
                 </h3>
               </div>
               <button
                 onClick={() => setShowOneClickCalibration(!showOneClickCalibration)}
-                className="text-purple-300 hover:text-purple-200 transition-colors"
+                className={`transition-colors ${
+                  isDarkMode 
+                    ? 'text-purple-300 hover:text-purple-200' 
+                    : 'text-purple-600 hover:text-purple-700'
+                }`}
               >
                 {showOneClickCalibration ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
               </button>
@@ -269,7 +287,9 @@ export default function TemperatureCalibration({
             
             {showOneClickCalibration && (
               <div className="space-y-4">
-                <div className="text-purple-200 text-sm">
+                <div className={`text-sm ${
+                  isDarkMode ? 'text-purple-200' : 'text-purple-700'
+                }`}>
                   {language === 'zh' 
                     ? '输入目标温度，系统将自动计算所有通道的偏移值，使所有读数统一到目标温度。'
                     : 'Enter target temperature, system will automatically calculate offset values for all channels to unify all readings to the target temperature.'
@@ -278,7 +298,9 @@ export default function TemperatureCalibration({
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-purple-200 mb-2">
+                    <label className={`block text-sm font-medium mb-2 ${
+                      isDarkMode ? 'text-purple-200' : 'text-purple-700'
+                    }`}>
                       <Thermometer className="w-4 h-4 inline mr-1" />
                       {language === 'zh' ? '目标温度 (°C)' : 'Target Temperature (°C)'}
                     </label>
@@ -287,7 +309,11 @@ export default function TemperatureCalibration({
                       step="0.1"
                       value={oneClickTargetTemp}
                       onChange={(e) => setOneClickTargetTemp(e.target.value)}
-                      className="w-full px-3 py-2 bg-purple-800 border border-purple-600 rounded-lg text-white focus:ring-2 focus:ring-purple-400"
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-400 ${
+                        isDarkMode 
+                          ? 'bg-purple-800 border-purple-600 text-white' 
+                          : 'bg-white border-purple-300 text-gray-900'
+                      }`}
                       placeholder="25.0"
                     />
                   </div>
@@ -296,15 +322,23 @@ export default function TemperatureCalibration({
                     <button
                       onClick={handleOneClickCalibration}
                       disabled={currentReadings.length === 0}
-                      className="flex items-center gap-2 w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                      className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg font-medium transition-colors text-white disabled:cursor-not-allowed ${
+                        currentReadings.length === 0
+                          ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                          : isDarkMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-purple-500 hover:bg-purple-600'
+                      }`}
                     >
                       <Target className="w-4 h-4" />
                       {language === 'zh' ? '一键校准' : 'One-Click Calibrate'}
                     </button>
                   </div>
                   
-                  <div className="text-sm text-purple-300">
-                    <div className="font-medium">{language === 'zh' ? '当前数据状态:' : 'Current Data Status:'}</div>
+                  <div className={`text-sm ${
+                    isDarkMode ? 'text-purple-300' : 'text-purple-700'
+                  }`}>
+                    <div className="font-medium">
+                      {language === 'zh' ? '当前数据状态:' : 'Current Data Status:'}
+                    </div>
                     <div>
                       {currentReadings.length > 0 
                         ? `${currentReadings.length} ${language === 'zh' ? '个通道有数据' : 'channels with data'}`
@@ -316,8 +350,12 @@ export default function TemperatureCalibration({
                 
                 {/* 当前温度预览 */}
                 {currentReadings.length > 0 && (
-                  <div className="p-3 bg-purple-800 rounded-lg">
-                    <div className="text-sm font-medium text-purple-200 mb-2">
+                  <div className={`p-3 rounded-lg ${
+                    isDarkMode ? 'bg-purple-800' : 'bg-purple-100'
+                  }`}>
+                    <div className={`text-sm font-medium mb-2 ${
+                      isDarkMode ? 'text-purple-200' : 'text-purple-700'
+                    }`}>
                       {language === 'zh' ? '当前温度读数:' : 'Current Temperature Readings:'}
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
@@ -328,9 +366,15 @@ export default function TemperatureCalibration({
                           const targetTemp = parseFloat(oneClickTargetTemp) || 25;
                           const offset = targetTemp - reading.temperature;
                           return (
-                            <div key={reading.channel} className="bg-purple-700 rounded p-2">
-                              <div className="text-purple-200">Ch{reading.channel}</div>
-                              <div className="text-white font-mono">{reading.temperature.toFixed(1)}°C</div>
+                            <div key={reading.channel} className={`rounded p-2 ${
+                              isDarkMode ? 'bg-purple-700' : 'bg-purple-200'
+                            }`}>
+                              <div className={isDarkMode ? 'text-purple-200' : 'text-purple-700'}>
+                                Ch{reading.channel}
+                              </div>
+                              <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                {reading.temperature.toFixed(1)}°C
+                              </div>
                               <div className={`text-xs ${offset > 0 ? 'text-green-300' : offset < 0 ? 'text-red-300' : 'text-gray-300'}`}>
                                 {offset > 0 ? '+' : ''}{offset.toFixed(1)}°C
                               </div>
@@ -346,14 +390,18 @@ export default function TemperatureCalibration({
           </div>
 
           {/* 快速操作 */}
-          <div className="p-4 bg-gray-700 rounded-lg">
-            <h3 className="text-lg font-semibold text-white mb-3">
+          <div className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+            <h3 className={`text-lg font-semibold mb-3 ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>
               {language === 'zh' ? '快速操作' : 'Quick Actions'}
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className={`block text-sm font-medium mb-2 ${
+                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                }`}>
                   {language === 'zh' ? '批量设置偏移值' : 'Batch Set Offset'}
                 </label>
                 <div className="flex gap-2">
@@ -361,7 +409,11 @@ export default function TemperatureCalibration({
                     type="number"
                     step="0.1"
                     placeholder="0.0"
-                    className="flex-1 px-3 py-2 bg-gray-600 border border-gray-500 rounded-lg text-white focus:ring-2 focus:ring-orange-500"
+                    className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 ${
+                      isDarkMode 
+                        ? 'bg-gray-600 border-gray-500 text-white' 
+                        : 'bg-white border-gray-300 text-gray-900'
+                    }`}
                     onKeyPress={(e) => {
                       if (e.key === 'Enter') {
                         const value = parseFloat((e.target as HTMLInputElement).value) || 0;
@@ -377,7 +429,11 @@ export default function TemperatureCalibration({
                       handleSetAllOffsets(value);
                       input.value = '';
                     }}
-                    className="px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-colors"
+                    className={`px-3 py-2 rounded-lg transition-colors text-white ${
+                      isDarkMode 
+                        ? 'bg-orange-600 hover:bg-orange-700' 
+                        : 'bg-orange-500 hover:bg-orange-600'
+                    }`}
                   >
                     {language === 'zh' ? '应用' : 'Apply'}
                   </button>
@@ -387,7 +443,11 @@ export default function TemperatureCalibration({
               <div className="flex items-end">
                 <button
                   onClick={handleResetOffsets}
-                  className="flex items-center gap-2 w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg transition-colors text-white ${
+                    isDarkMode 
+                      ? 'bg-gray-600 hover:bg-gray-500' 
+                      : 'bg-gray-500 hover:bg-gray-600'
+                  }`}
                 >
                   <RotateCcw className="w-4 h-4" />
                   {language === 'zh' ? '重置所有偏移值' : 'Reset All Offsets'}
@@ -398,7 +458,11 @@ export default function TemperatureCalibration({
                 <button
                   onClick={handleApplyCalibration}
                   disabled={isApplying || !hasNonZeroOffsets()}
-                  className="flex items-center gap-2 w-full px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                  className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg font-medium transition-colors text-white disabled:cursor-not-allowed ${
+                    isApplying || !hasNonZeroOffsets()
+                      ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                      : isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                  }`}
                 >
                   {isApplying ? (
                     <>
@@ -418,7 +482,9 @@ export default function TemperatureCalibration({
 
           {/* 通道校准设置 */}
           <div>
-            <h3 className="text-lg font-semibold text-white mb-4">
+            <h3 className={`text-lg font-semibold mb-4 ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>
               {language === 'zh' ? '通道校准设置' : 'Channel Calibration Settings'}
             </h3>
             
@@ -435,10 +501,10 @@ export default function TemperatureCalibration({
                     key={offset.channelId}
                     className={`p-4 rounded-lg border-2 transition-all ${
                       isLocked 
-                        ? 'border-gray-700 bg-gray-900 opacity-40'
+                        ? isDarkMode ? 'border-gray-700 bg-gray-900 opacity-40' : 'border-gray-400 bg-gray-200 opacity-40'
                         : offset.enabled
-                          ? 'border-orange-500 bg-gray-700'
-                          : 'border-gray-600 bg-gray-800'
+                          ? isDarkMode ? 'border-orange-500 bg-gray-700' : 'border-orange-300 bg-orange-50'
+                          : isDarkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-gray-100'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -447,7 +513,9 @@ export default function TemperatureCalibration({
                           className="w-3 h-3 rounded-full"
                           style={{ backgroundColor: isLocked ? '#6B7280' : channel.color }}
                         />
-                        <span className="text-sm font-medium text-gray-300">
+                        <span className={`text-sm font-medium ${
+                          isDarkMode ? 'text-gray-300' : 'text-gray-700'
+                        }`}>
                           {channel.name}
                         </span>
                       </div>
@@ -464,14 +532,22 @@ export default function TemperatureCalibration({
                     
                     {/* 当前温度显示 */}
                     {!isLocked && currentTemp !== null && (
-                      <div className="mb-2 p-2 bg-gray-600 rounded text-xs">
-                        <div className="text-gray-400">{language === 'zh' ? '当前温度' : 'Current Temp'}</div>
-                        <div className="text-white font-mono">{currentTemp.toFixed(1)}°C</div>
+                      <div className={`mb-2 p-2 rounded text-xs ${
+                        isDarkMode ? 'bg-gray-600' : 'bg-gray-200'
+                      }`}>
+                        <div className={isDarkMode ? 'text-gray-400' : 'text-gray-600'}>
+                          {language === 'zh' ? '当前温度' : 'Current Temp'}
+                        </div>
+                        <div className={`font-mono ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {currentTemp.toFixed(1)}°C
+                        </div>
                       </div>
                     )}
                     
                     <div>
-                      <label className="block text-xs text-gray-400 mb-1">
+                      <label className={`block text-xs mb-1 ${
+                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}>
                         {language === 'zh' ? '校准偏移值 (°C)' : 'Calibration Offset (°C)'}
                       </label>
                       <input
@@ -480,7 +556,11 @@ export default function TemperatureCalibration({
                         value={offset.offset}
                         onChange={(e) => handleOffsetChange(offset.channelId, parseFloat(e.target.value) || 0)}
                         disabled={isLocked || !offset.enabled}
-                        className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded text-white text-sm focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={`w-full px-3 py-2 border rounded text-sm focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          isDarkMode 
+                            ? 'bg-gray-600 border-gray-500 text-white' 
+                            : 'bg-white border-gray-300 text-gray-900'
+                        }`}
                         placeholder="0.0"
                       />
                     </div>
@@ -503,14 +583,22 @@ export default function TemperatureCalibration({
           </div>
 
           {/* 说明信息 */}
-          <div className="p-4 bg-blue-900 border border-blue-700 rounded-lg">
+          <div className={`p-4 border rounded-lg ${
+            isDarkMode 
+              ? 'bg-blue-900 border-blue-700' 
+              : 'bg-blue-50 border-blue-200'
+          }`}>
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle className="w-4 h-4 text-blue-400" />
-              <span className="text-blue-300 font-medium">
+              <span className={`font-medium ${
+                isDarkMode ? 'text-blue-300' : 'text-blue-700'
+              }`}>
                 {language === 'zh' ? '校准说明' : 'Calibration Instructions'}
               </span>
             </div>
-            <ul className="text-blue-300 text-sm space-y-1">
+            <ul className={`text-sm space-y-1 ${
+              isDarkMode ? 'text-blue-300' : 'text-blue-700'
+            }`}>
               <li>• <strong>{language === 'zh' ? '一键校准' : 'One-Click Calibration'}</strong>: {language === 'zh' ? '自动计算所有通道偏移值，统一到目标温度' : 'Automatically calculate offset values for all channels to unify to target temperature'}</li>
               <li>• <strong>{language === 'zh' ? '校准公式' : 'Calibration Formula'}</strong>: {language === 'zh' ? '校准后温度 = 原始温度 + 偏移值' : 'Calibrated Temperature = Original Temperature + Offset'}</li>
               <li>• <strong>{language === 'zh' ? '正偏移值' : 'Positive Offset'}</strong>: {language === 'zh' ? '增加温度读数（如传感器读数偏低）' : 'Increases temperature reading (if sensor reads low)'}</li>

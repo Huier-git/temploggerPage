@@ -39,9 +39,23 @@ export function useTemperatureData(
     const offset = calibrationOffsets.find(o => o.channelId === reading.channel && o.enabled);
     
     if (offset) {
+      // 验证校准偏移值的有效性
+      if (typeof offset.offset !== 'number' || isNaN(offset.offset) || !isFinite(offset.offset)) {
+        console.error(`Invalid calibration offset for channel ${reading.channel}:`, offset.offset);
+        return reading;
+      }
+      
+      const calibratedTemp = reading.temperature + offset.offset;
+      
+      // 验证校准后温度的有效性
+      if (isNaN(calibratedTemp) || !isFinite(calibratedTemp)) {
+        console.error(`Calibration resulted in invalid temperature for channel ${reading.channel}: ${reading.temperature} + ${offset.offset} = ${calibratedTemp}`);
+        return reading;
+      }
+      
       return {
         ...reading,
-        calibratedTemperature: reading.temperature + offset.offset
+        calibratedTemperature: calibratedTemp
       };
     }
     
@@ -186,9 +200,29 @@ export function useTemperatureData(
     // Extract register values (16-bit big-endian)
     const values: number[] = [];
     for (let i = 0; i < byteCount; i += 2) {
+      // 确保不会越界访问
+      if (3 + i + 1 >= response.length) {
+        console.error(`Modbus response data truncated at byte ${i}`);
+        break;
+      }
       const highByte = response[3 + i];
       const lowByte = response[3 + i + 1];
+      
+      // 验证字节值的有效性
+      if (typeof highByte !== 'number' || typeof lowByte !== 'number' || 
+          highByte < 0 || highByte > 255 || lowByte < 0 || lowByte > 255) {
+        console.error(`Invalid byte values: high=${highByte}, low=${lowByte}`);
+        continue;
+      }
+      
       const value = (highByte << 8) | lowByte;
+      
+      // 验证合成的16位值
+      if (value < 0 || value > 65535) {
+        console.error(`Invalid 16-bit value: ${value}`);
+        continue;
+      }
+      
       values.push(value);
     }
 
@@ -285,6 +319,12 @@ export function useTemperatureData(
         const endAddr = Math.max(...registersToRead);
         const quantity = endAddr - startAddr + 1;
         
+        // 验证Modbus请求参数
+        if (startAddr < 0 || startAddr > 65535 || quantity < 1 || quantity > 125) {
+          console.error(`Invalid Modbus request parameters: startAddr=${startAddr}, quantity=${quantity}`);
+          return;
+        }
+        
         // Build Modbus request (Function Code 0x03 - Read Holding Registers)
         const request = buildModbusFrame(1, 0x03, startAddr, quantity);
         
@@ -319,28 +359,38 @@ export function useTemperatureData(
                 if (registerIndex >= 0 && registerIndex < registerValues.length) {
                   const rawValue = registerValues[registerIndex];
                   
+                  // 严格验证原始值
+                  if (typeof rawValue !== 'number' || isNaN(rawValue) || rawValue < 0 || rawValue > 65535) {
+                    console.error(`Invalid raw value for channel ${channel}, register ${registerAddr}: ${rawValue}`);
+                    return;
+                  }
+                  
                   // Convert raw value to temperature using conversion configuration
                   const temperature = convertRawToTemperature(rawValue, temperatureConversionConfig);
                   
+                  // 验证转换后的温度
+                  if (!isValidTemperature(temperature)) {
+                    console.error(`Invalid converted temperature for channel ${channel}: raw=${rawValue}, temp=${temperature}`);
+                    return;
+                  }
+                  
                   console.log(`Channel ${channel}, Register ${registerAddr}: Raw=${rawValue}, Temp=${temperature.toFixed(1)}°C`);
                   
-                  if (isValidTemperature(temperature)) {
-                    newReadings.push({
-                      timestamp,
-                      channel,
-                      temperature,
-                      rawValue
-                    });
-                    
-                    newRawData.push({
-                      timestamp,
-                      channel,
-                      registerAddress: registerAddr,
-                      rawValue,
-                      convertedTemperature: temperature,
-                      conversionMethod: temperatureConversionConfig.mode
-                    });
-                  }
+                  newReadings.push({
+                    timestamp,
+                    channel,
+                    temperature,
+                    rawValue
+                  });
+                  
+                  newRawData.push({
+                    timestamp,
+                    channel,
+                    registerAddress: registerAddr,
+                    rawValue,
+                    convertedTemperature: temperature,
+                    conversionMethod: temperatureConversionConfig.mode
+                  });
                 }
               }
             });
@@ -382,14 +432,57 @@ export function useTemperatureData(
       return;
     }
 
-    const interval = setInterval(() => {
-      readTemperatureData();
-    }, recordingConfig.interval * 1000);
+    let expectedReadCount = 0;
+    let actualReadCount = 0;
+    const startTime = Date.now();
+    
+    // 使用更精确的定时器
+    let timeoutId: NodeJS.Timeout;
+    
+    const scheduleNextRead = () => {
+      expectedReadCount++;
+      const expectedTime = startTime + (expectedReadCount * recordingConfig.interval * 1000);
+      const currentTime = Date.now();
+      const delay = Math.max(0, expectedTime - currentTime);
+      
+      timeoutId = setTimeout(async () => {
+        try {
+          await readTemperatureData();
+          actualReadCount++;
+        } catch (error) {
+          console.error('Scheduled read failed:', error);
+        }
+        
+        // 继续调度下一次读取
+        if (connectionStatus.isConnected && recordingConfig.isRecording && !testModeConfig.enabled) {
+          scheduleNextRead();
+        }
+      }, delay);
+    };
+    
+    // 立即开始第一次读取
+    readTemperatureData().then(() => {
+      actualReadCount++;
+      scheduleNextRead();
+    }).catch(error => {
+      console.error('Initial read failed:', error);
+      scheduleNextRead();
+    });
+    
+    // 定期输出统计信息
+    const statsInterval = setInterval(() => {
+      const elapsedSeconds = (Date.now() - startTime) / 1000;
+      const expectedTotal = Math.floor(elapsedSeconds / recordingConfig.interval);
+      const efficiency = expectedTotal > 0 ? (actualReadCount / expectedTotal * 100).toFixed(1) : '0.0';
+      console.log(`Data collection stats: Expected=${expectedTotal}, Actual=${actualReadCount}, Efficiency=${efficiency}%`);
+    }, 30000); // 每30秒输出一次统计
 
-    // Read immediately once
-    readTemperatureData();
-
-    return () => clearInterval(interval);
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      clearInterval(statsInterval);
+    };
   }, [
     connectionStatus.isConnected,
     recordingConfig.isRecording,

@@ -2,7 +2,7 @@ import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TemperatureReading, DisplayConfig, ChannelConfig } from '../types';
 import { formatTemperature } from '../utils/temperatureProcessor';
-import { Zap, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Zap, ToggleLeft, ToggleRight, TrendingDown } from 'lucide-react';
 import { useTranslation } from '../utils/i18n';
 
 interface TemperatureChartProps {
@@ -11,7 +11,12 @@ interface TemperatureChartProps {
   channels: ChannelConfig[];
   language: 'zh' | 'en';
   onHoverDataChange?: (hoverData: { [channelId: number]: number } | null) => void;
+  isDarkMode: boolean;
 }
+
+// 性能优化配置
+const MAX_CHART_POINTS = 10000; // 图表最大显示点数
+const DOWNSAMPLING_THRESHOLD = 15000; // 开始降采样的阈值
 
 // Function to darken a color for calibrated data display
 const darkenColor = (color: string, factor: number = 0.6): string => {
@@ -30,12 +35,95 @@ const darkenColor = (color: string, factor: number = 0.6): string => {
   return `#${darkR.toString(16).padStart(2, '0')}${darkG.toString(16).padStart(2, '0')}${darkB.toString(16).padStart(2, '0')}`;
 };
 
+// 数据降采样函数 - 保持校准数据的连贯性
+const downsampleReadings = (
+  readings: TemperatureReading[], 
+  targetPoints: number,
+  showCalibratedData: boolean,
+  hasCalibrationData: boolean
+): TemperatureReading[] => {
+  if (readings.length <= targetPoints) {
+    return readings;
+  }
+
+  console.log(`开始数据降采样: ${readings.length} -> ${targetPoints} 点`);
+  
+  const bucketSize = Math.ceil(readings.length / targetPoints);
+  const downsampledReadings: TemperatureReading[] = [];
+  
+  // 按时间戳排序
+  const sortedReadings = [...readings].sort((a, b) => a.timestamp - b.timestamp);
+  
+  for (let i = 0; i < sortedReadings.length; i += bucketSize) {
+    const bucket = sortedReadings.slice(i, i + bucketSize);
+    
+    // 按通道分组
+    const channelGroups = new Map<number, TemperatureReading[]>();
+    bucket.forEach(reading => {
+      if (!channelGroups.has(reading.channel)) {
+        channelGroups.set(reading.channel, []);
+      }
+      channelGroups.get(reading.channel)!.push(reading);
+    });
+    
+    // 为每个通道创建聚合数据点
+    channelGroups.forEach((channelReadings, channel) => {
+      if (channelReadings.length === 0) return;
+      
+      // 使用桶中间的时间戳
+      const middleIndex = Math.floor(channelReadings.length / 2);
+      const timestamp = channelReadings[middleIndex].timestamp;
+      
+      // 计算平均温度
+      const avgTemperature = channelReadings.reduce((sum, r) => sum + r.temperature, 0) / channelReadings.length;
+      
+      // 计算平均原始值
+      const avgRawValue = Math.round(channelReadings.reduce((sum, r) => sum + r.rawValue, 0) / channelReadings.length);
+      
+      // 处理校准温度 - 确保连贯性
+      let avgCalibratedTemperature: number | undefined;
+      const calibratedReadings = channelReadings.filter(r => r.calibratedTemperature !== undefined);
+      
+      if (calibratedReadings.length > 0) {
+        // 如果桶中有校准数据，计算平均校准温度
+        avgCalibratedTemperature = calibratedReadings.reduce((sum, r) => sum + r.calibratedTemperature!, 0) / calibratedReadings.length;
+      } else if (hasCalibrationData) {
+        // 如果整体有校准数据但当前桶没有，使用原始温度作为校准温度以保持连贯性
+        avgCalibratedTemperature = avgTemperature;
+      }
+      
+      const downsampledReading: TemperatureReading = {
+        timestamp,
+        channel,
+        temperature: avgTemperature,
+        rawValue: avgRawValue
+      };
+      
+      // 只有在有校准数据时才添加校准温度字段
+      if (avgCalibratedTemperature !== undefined) {
+        downsampledReading.calibratedTemperature = avgCalibratedTemperature;
+      }
+      
+      downsampledReadings.push(downsampledReading);
+    });
+  }
+  
+  // 按时间戳重新排序
+  const result = downsampledReadings.sort((a, b) => a.timestamp - b.timestamp);
+  
+  console.log(`降采样完成: ${readings.length} -> ${result.length} 点 (目标: ${targetPoints})`);
+  console.log('降采样后样本数据:', result.slice(0, 3));
+  
+  return result;
+};
+
 export default function TemperatureChart({ 
   readings, 
   displayConfig, 
   channels, 
   language,
-  onHoverDataChange 
+  onHoverDataChange,
+  isDarkMode
 }: TemperatureChartProps) {
   const { t } = useTranslation(language);
   
@@ -54,40 +142,62 @@ export default function TemperatureChart({
   // Check if we have calibration data
   const hasCalibrationData = React.useMemo(() => {
     return filteredReadings.some(reading => reading.calibratedTemperature !== undefined);
-  }, [filteredReadings, readings]); // 添加readings依赖确保重新计算
+  }, [filteredReadings]);
 
   // Reset calibration toggle when no calibration data is available
   React.useEffect(() => {
     if (!hasCalibrationData) {
       setShowCalibratedData(false);
-    } else {
-      // 如果检测到校准数据，自动显示切换按钮
-      console.log('检测到校准数据，显示切换按钮');
     }
   }, [hasCalibrationData]);
 
+  // 数据降采样处理 - 新增性能优化
+  const processedReadings = React.useMemo(() => {
+    console.log('开始处理数据降采样:', {
+      filteredReadingsLength: filteredReadings.length,
+      threshold: DOWNSAMPLING_THRESHOLD,
+      targetPoints: MAX_CHART_POINTS,
+      hasCalibrationData,
+      showCalibratedData
+    });
+
+    if (filteredReadings.length <= DOWNSAMPLING_THRESHOLD) {
+      console.log('数据量未超过阈值，使用原始数据');
+      return filteredReadings;
+    }
+
+    const downsampled = downsampleReadings(
+      filteredReadings, 
+      MAX_CHART_POINTS, 
+      showCalibratedData, 
+      hasCalibrationData
+    );
+    
+    return downsampled;
+  }, [filteredReadings, showCalibratedData, hasCalibrationData]);
+
   // Get start time for relative time calculation
   const startTime = React.useMemo(() => {
-    if (filteredReadings.length === 0) return Date.now();
-    return Math.min(...filteredReadings.map(r => r.timestamp));
-  }, [filteredReadings]);
+    if (processedReadings.length === 0) return Date.now();
+    return Math.min(...processedReadings.map(r => r.timestamp));
+  }, [processedReadings]);
 
-  // Transform data for chart - 关键修复：确保数据结构正确且完整
+  // Transform data for chart - 使用处理后的数据
   const chartData = React.useMemo(() => {
     console.log('开始处理图表数据:', {
-      filteredReadingsLength: filteredReadings.length,
-      sampleData: filteredReadings.slice(0, 3)
+      processedReadingsLength: processedReadings.length,
+      sampleData: processedReadings.slice(0, 3)
     });
     
     const dataMap = new Map<number, any>();
     
-    if (filteredReadings.length === 0) {
-      console.log('过滤后的读数为空，返回空数组');
+    if (processedReadings.length === 0) {
+      console.log('处理后的读数为空，返回空数组');
       return [];
     }
     
     // 按时间戳分组数据
-    filteredReadings.forEach(reading => {
+    processedReadings.forEach(reading => {
       const timestamp = reading.timestamp;
       const relativeTime = displayConfig.relativeTime 
         ? Math.round((timestamp - startTime) / 1000)
@@ -127,20 +237,21 @@ export default function TemperatureChart({
     });
     
     return result;
-    
-    return result;
-  }, [filteredReadings, displayConfig.relativeTime, startTime]);
+  }, [processedReadings, displayConfig.relativeTime, startTime]);
 
   // 添加调试信息
   React.useEffect(() => {
     console.log('TemperatureChart 状态更新:', {
       readingsLength: readings.length,
       filteredReadingsLength: filteredReadings.length,
+      processedReadingsLength: processedReadings.length,
       chartDataLength: chartData.length,
       displayConfig: displayConfig.mode,
-      timeWindow: displayConfig.timeWindow
+      timeWindow: displayConfig.timeWindow,
+      isDownsampled: filteredReadings.length > DOWNSAMPLING_THRESHOLD
     });
-  }, [readings.length, filteredReadings.length, chartData.length, displayConfig]);
+  }, [readings.length, filteredReadings.length, processedReadings.length, chartData.length, displayConfig]);
+
   // Calculate Y-axis range
   const calculateYAxisDomain = React.useCallback((data: any[], channelsToUse: ChannelConfig[]) => {
     if (data.length === 0) return [0, 50];
@@ -208,8 +319,14 @@ export default function TemperatureChart({
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-900 border border-gray-600 rounded-lg p-4 shadow-xl">
-          <p className="text-gray-300 text-sm mb-2 font-medium">
+        <div className={`border rounded-lg p-4 shadow-xl ${
+          isDarkMode 
+            ? 'bg-gray-900 border-gray-600' 
+            : 'bg-white border-gray-300'
+        }`}>
+          <p className={`text-sm mb-2 font-medium ${
+            isDarkMode ? 'text-gray-300' : 'text-gray-700'
+          }`}>
             {displayConfig.relativeTime ? `${t('time')}: ${label}` : `${t('time')}: ${label}`}
           </p>
           {payload.map((entry: any, index: number) => (
@@ -228,14 +345,10 @@ export default function TemperatureChart({
     return null;
   };
 
-  // Render individual chart for each channel
+  // Render individual chart for each channel - 使用处理后的数据
   const renderIndividualChart = (channel: ChannelConfig) => {
-    const dataKey = showCalibratedData && hasCalibrationData 
-      ? `channel${channel.id}_calibrated` 
-      : `channel${channel.id}`;
-    
-    // 修复：直接从原始数据中提取该通道的数据
-    const channelReadings = filteredReadings
+    // 修复：直接从处理后的数据中提取该通道的数据
+    const channelReadings = processedReadings
       .filter(reading => reading.channel === channel.id)
       .sort((a, b) => a.timestamp - b.timestamp);
     
@@ -272,10 +385,16 @@ export default function TemperatureChart({
     if (channelData.length === 0) {
       console.log(`通道 ${channel.id} 无数据`);
       return (
-        <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4 h-64 flex items-center justify-center">
+        <div key={channel.id} className={`rounded-lg border p-4 h-64 flex items-center justify-center ${
+          isDarkMode 
+            ? 'bg-gray-800 border-gray-700' 
+            : 'bg-white border-gray-200'
+        }`}>
           <div className="text-center">
-            <p className="text-gray-400 text-sm">{channel.name} - {t('noData')}</p>
-            <p className="text-gray-500 text-xs mt-1">
+            <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              {channel.name} - {t('noData')}
+            </p>
+            <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
               {language === 'zh' ? '该通道无数据' : 'No data for this channel'}
             </p>
           </div>
@@ -304,8 +423,14 @@ export default function TemperatureChart({
       : channel.color;
 
     return (
-      <div key={channel.id} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-        <h4 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+      <div key={channel.id} className={`rounded-lg border p-4 ${
+        isDarkMode 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-200'
+      }`}>
+        <h4 className={`text-lg font-semibold mb-3 flex items-center gap-2 ${
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>
           <div 
             className="w-3 h-3 rounded-full"
             style={{ backgroundColor: lineColor }}
@@ -328,20 +453,24 @@ export default function TemperatureChart({
               onMouseLeave={handleMouseLeave}
             >
               {displayConfig.showGrid && (
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+                <CartesianGrid 
+                  strokeDasharray="3 3" 
+                  stroke={isDarkMode ? "#374151" : "#E5E7EB"} 
+                  opacity={0.3} 
+                />
               )}
               <XAxis 
                 dataKey="time" 
-                stroke="#9CA3AF"
+                stroke={isDarkMode ? "#9CA3AF" : "#6B7280"}
                 fontSize={10}
                 interval="preserveStartEnd"
-                tick={{ fill: '#9CA3AF' }}
+                tick={{ fill: isDarkMode ? '#9CA3AF' : '#6B7280' }}
               />
               <YAxis 
-                stroke="#9CA3AF"
+                stroke={isDarkMode ? "#9CA3AF" : "#6B7280"}
                 fontSize={10}
                 tickFormatter={(value) => `${value.toFixed(1)}°C`}
-                tick={{ fill: '#9CA3AF' }}
+                tick={{ fill: isDarkMode ? '#9CA3AF' : '#6B7280' }}
                 domain={channelYDomain}
               />
               <Tooltip content={<CustomTooltip />} />
@@ -363,27 +492,43 @@ export default function TemperatureChart({
     );
   };
 
+  // 性能指示器
+  const isDownsampled = filteredReadings.length > DOWNSAMPLING_THRESHOLD;
+  const downsamplingRatio = isDownsampled 
+    ? ((filteredReadings.length - processedReadings.length) / filteredReadings.length * 100).toFixed(1)
+    : '0';
+
   if (chartData.length === 0) {
     return (
-      <div className="bg-gray-800 rounded-lg border border-gray-700 h-[600px] flex items-center justify-center">
+      <div className={`rounded-lg border h-[600px] flex items-center justify-center ${
+        isDarkMode 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-200'
+      }`}>
         <div className="text-center">
           {readings.length === 0 ? (
             <>
               <div className="text-6xl mb-4">📊</div>
-              <p className="text-gray-400 text-lg">{t('noTemperatureData')}</p>
-              <p className="text-gray-500 text-sm mt-2">{t('startTestModeOrConnect')}</p>
+              <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {t('noTemperatureData')}
+              </p>
+              <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                {t('startTestModeOrConnect')}
+              </p>
             </>
           ) : (
             <>
               <div className="text-6xl mb-4">⏳</div>
-              <p className="text-gray-400 text-lg">{language === 'zh' ? '数据加载中...' : 'Loading data...'}</p>
-              <p className="text-gray-500 text-sm mt-2">
+              <p className={`text-lg ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {language === 'zh' ? '数据加载中...' : 'Loading data...'}
+              </p>
+              <p className={`text-sm mt-2 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                 {language === 'zh' 
                   ? `原始数据: ${readings.length} 条，过滤后: ${filteredReadings.length} 条，图表数据: ${chartData.length} 条` 
                   : `Raw: ${readings.length}, Filtered: ${filteredReadings.length}, Chart: ${chartData.length} records`
                 }
               </p>
-              <div className="mt-4 text-xs text-gray-500">
+              <div className={`mt-4 text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                 <p>{language === 'zh' ? '显示模式' : 'Display mode'}: {displayConfig.mode}</p>
                 {displayConfig.mode === 'sliding' && (
                   <p>{language === 'zh' ? '时间窗口' : 'Time window'}: {displayConfig.timeWindow} {language === 'zh' ? '分钟' : 'minutes'}</p>
@@ -403,13 +548,20 @@ export default function TemperatureChart({
     console.log('分析视图渲染:', {
       enabledChannelsCount: enabledChannels.length,
       totalReadings: readings.length,
-      filteredReadings: filteredReadings.length
+      filteredReadings: filteredReadings.length,
+      processedReadings: processedReadings.length
     });
     
     return (
-      <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
+      <div className={`rounded-lg border p-6 h-[600px] flex flex-col ${
+        isDarkMode 
+          ? 'bg-gray-800 border-gray-700' 
+          : 'bg-white border-gray-200'
+      }`}>
         <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h3 className={`text-2xl font-bold flex items-center gap-2 ${
+            isDarkMode ? 'text-white' : 'text-gray-900'
+          }`}>
             {language === 'zh' ? '分析视图 - 通道分析' : 'Individual View - Channel Analysis'}
             {showCalibratedData && hasCalibrationData && (
               <span className="text-orange-400 text-lg flex items-center gap-1">
@@ -422,7 +574,7 @@ export default function TemperatureChart({
             {/* Calibration Toggle Switch */}
             {hasCalibrationData && (
               <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-300">
+                <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                   {language === 'zh' ? '显示校准数据' : 'Show Calibrated Data'}
                 </span>
                 <button
@@ -430,7 +582,7 @@ export default function TemperatureChart({
                   className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
                     showCalibratedData 
                       ? 'bg-orange-600 hover:bg-orange-700 text-white' 
-                      : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                      : isDarkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                   }`}
                 >
                   {showCalibratedData ? (
@@ -448,13 +600,27 @@ export default function TemperatureChart({
               </div>
             )}
             
-            <div className="text-sm text-gray-400">
+            {/* 性能指示器 */}
+            {isDownsampled && (
+              <div className={`flex items-center gap-2 px-3 py-1 border rounded-lg ${
+                isDarkMode 
+                  ? 'bg-blue-900 border-blue-600' 
+                  : 'bg-blue-50 border-blue-200'
+              }`}>
+                <TrendingDown className="w-4 h-4 text-blue-400" />
+                <span className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                  {language === 'zh' ? '性能优化' : 'Performance Mode'}: -{downsamplingRatio}%
+                </span>
+              </div>
+            )}
+            
+            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {language === 'zh' ? '显示模式' : 'Display Mode'}: {displayConfig.mode === 'sliding' 
                 ? `${language === 'zh' ? '滑动窗口' : 'Sliding Window'} (${displayConfig.timeWindow}${language === 'zh' ? '分钟' : 'min'})` 
                 : (language === 'zh' ? '完整历史' : 'Full History')
               }
             </div>
-            <div className="text-sm text-gray-400">
+            <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {language === 'zh' ? '时间轴' : 'Time Axis'}: {displayConfig.relativeTime 
                 ? (language === 'zh' ? '相对时间' : 'Relative Time') 
                 : (language === 'zh' ? '绝对时间' : 'Absolute Time')
@@ -474,9 +640,15 @@ export default function TemperatureChart({
 
   // Combined view
   return (
-    <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 h-[600px] flex flex-col">
+    <div className={`rounded-lg border p-6 h-[600px] flex flex-col ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-center justify-between mb-6">
-        <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+        <h3 className={`text-2xl font-bold flex items-center gap-2 ${
+          isDarkMode ? 'text-white' : 'text-gray-900'
+        }`}>
           {language === 'zh' ? '综合视图 - 温度趋势' : 'Combined View - Temperature Trends'}
           {showCalibratedData && hasCalibrationData && (
             <span className="text-orange-400 text-lg flex items-center gap-1">
@@ -489,7 +661,7 @@ export default function TemperatureChart({
           {/* Calibration Toggle Switch */}
           {hasCalibrationData && (
             <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-300">
+              <span className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {language === 'zh' ? '显示校准数据' : 'Show Calibrated Data'}
               </span>
               <button
@@ -497,7 +669,7 @@ export default function TemperatureChart({
                 className={`flex items-center gap-2 px-3 py-1 rounded-lg transition-colors ${
                   showCalibratedData 
                     ? 'bg-orange-600 hover:bg-orange-700 text-white' 
-                    : 'bg-gray-600 hover:bg-gray-500 text-gray-300'
+                    : isDarkMode ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
                 }`}
               >
                 {showCalibratedData ? (
@@ -515,28 +687,47 @@ export default function TemperatureChart({
             </div>
           )}
           
-          <div className="text-sm text-gray-400">
+          {/* 性能指示器 */}
+          {isDownsampled && (
+            <div className={`flex items-center gap-2 px-3 py-1 border rounded-lg ${
+              isDarkMode 
+                ? 'bg-blue-900 border-blue-600' 
+                : 'bg-blue-50 border-blue-200'
+            }`}>
+              <TrendingDown className="w-4 h-4 text-blue-400" />
+              <span className={`text-sm ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                {language === 'zh' ? '性能优化' : 'Performance Mode'}: -{downsamplingRatio}%
+              </span>
+            </div>
+          )}
+          
+          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {language === 'zh' ? '显示模式' : 'Display Mode'}: {displayConfig.mode === 'sliding' 
               ? `${language === 'zh' ? '滑动窗口' : 'Sliding Window'} (${displayConfig.timeWindow}${language === 'zh' ? '分钟' : 'min'})` 
               : (language === 'zh' ? '完整历史' : 'Full History')
             }
           </div>
-          <div className="text-sm text-gray-400">
+          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {language === 'zh' ? '时间轴' : 'Time Axis'}: {displayConfig.relativeTime 
               ? (language === 'zh' ? '相对时间 (分:秒)' : 'Relative Time (min:sec)') 
               : (language === 'zh' ? '绝对时间' : 'Absolute Time')
             }
           </div>
-          <div className="text-sm text-gray-400">
+          <div className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {language === 'zh' ? '数据点' : 'Data Points'}: {chartData.length.toLocaleString()}
+            {isDownsampled && (
+              <span className="text-blue-400 ml-1">
+                / {filteredReadings.length.toLocaleString()}
+              </span>
+            )}
           </div>
           
           {/* Status indicator */}
           {hasCalibrationData && (
             <div className={`text-sm px-3 py-1 rounded-full border flex items-center gap-1 ${
               showCalibratedData 
-                ? 'bg-orange-900 text-orange-300 border-orange-600' 
-                : 'bg-gray-700 text-gray-400 border-gray-600'
+                ? isDarkMode ? 'bg-orange-900 text-orange-300 border-orange-600' : 'bg-orange-50 text-orange-700 border-orange-200'
+                : isDarkMode ? 'bg-gray-700 text-gray-400 border-gray-600' : 'bg-gray-100 text-gray-600 border-gray-300'
             }`}>
               <Zap className="w-3 h-3" />
               {showCalibratedData 
@@ -557,26 +748,30 @@ export default function TemperatureChart({
             onMouseLeave={handleMouseLeave}
           >
             {displayConfig.showGrid && (
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+              <CartesianGrid 
+                strokeDasharray="3 3" 
+                stroke={isDarkMode ? "#374151" : "#E5E7EB"} 
+                opacity={0.3} 
+              />
             )}
             <XAxis 
               dataKey="time" 
-              stroke="#9CA3AF"
+              stroke={isDarkMode ? "#9CA3AF" : "#6B7280"}
               fontSize={12}
               interval="preserveStartEnd"
-              tick={{ fill: '#9CA3AF' }}
+              tick={{ fill: isDarkMode ? '#9CA3AF' : '#6B7280' }}
             />
             <YAxis 
-              stroke="#9CA3AF"
+              stroke={isDarkMode ? "#9CA3AF" : "#6B7280"}
               fontSize={12}
               tickFormatter={(value) => `${value.toFixed(1)}°C`}
-              tick={{ fill: '#9CA3AF' }}
+              tick={{ fill: isDarkMode ? '#9CA3AF' : '#6B7280' }}
               domain={yAxisDomain}
             />
             <Tooltip content={<CustomTooltip />} />
             {displayConfig.showLegend && (
               <Legend 
-                wrapperStyle={{ color: '#9CA3AF' }}
+                wrapperStyle={{ color: isDarkMode ? '#9CA3AF' : '#6B7280' }}
                 iconType="line"
               />
             )}

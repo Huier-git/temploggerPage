@@ -15,6 +15,7 @@ interface DataRecordingControlsProps {
   onImportData: (file: File) => void;
   onClearSavedData: () => void;
   language: 'zh' | 'en';
+  isDarkMode: boolean;
 }
 
 export default function DataRecordingControls({
@@ -27,7 +28,8 @@ export default function DataRecordingControls({
   onManualSave,
   onImportData,
   onClearSavedData,
-  language
+  language,
+  isDarkMode
 }: DataRecordingControlsProps) {
   const { t } = useTranslation(language);
   const [customFrequency, setCustomFrequency] = React.useState<string>('1.0');
@@ -212,11 +214,17 @@ export default function DataRecordingControls({
   const currentFrequency = recordingConfig.interval > 0 ? (1 / recordingConfig.interval).toFixed(1) : '1.0';
 
   return (
-    <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+    <div className={`rounded-lg p-6 border ${
+      isDarkMode 
+        ? 'bg-gray-800 border-gray-700' 
+        : 'bg-white border-gray-200'
+    }`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <Database className="w-5 h-5 text-purple-400" />
-          <h2 className="text-xl font-semibold text-white">{t('dataRecordingAndStorage')}</h2>
+          <h2 className={`text-xl font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('dataRecordingAndStorage')}
+          </h2>
         </div>
         
         <div className="flex items-center gap-3">
@@ -244,52 +252,62 @@ export default function DataRecordingControls({
 
       {/* 统计概览 */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <BarChart className="w-4 h-4 text-blue-400" />
-            <span className="text-sm font-medium text-gray-300">{t('currentData')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('currentData')}
+            </span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {displayCurrentData}
           </div>
-          <div className="text-xs text-gray-400">
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {totalReadings > 0 ? t('records') : t('noSession')}
           </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-green-400" />
-            <span className="text-sm font-medium text-gray-300">{t('recordingDuration')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('recordingDuration')}
+            </span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {displayDuration}
           </div>
-          <div className="text-xs text-gray-400">
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {totalReadings > 0 ? t('minutes') : t('noSession')}
           </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Database className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-medium text-gray-300">{t('activeChannels')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('activeChannels')}
+            </span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {activeChannels}
           </div>
-          <div className="text-xs text-gray-400">{serialConfig.registerCount} {t('totalChannels')}</div>
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+            {serialConfig.registerCount} {t('totalChannels')}
+          </div>
         </div>
 
-        <div className="bg-gray-700 rounded-lg p-4">
+        <div className={`rounded-lg p-4 ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
           <div className="flex items-center gap-2 mb-2">
             <Save className="w-4 h-4 text-yellow-400" />
-            <span className="text-sm font-medium text-gray-300">{t('localStorage')}</span>
+            <span className={`text-sm font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {t('localStorage')}
+            </span>
           </div>
-          <div className="text-2xl font-bold text-white">
+          <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             {localStorageUsage}
           </div>
-          <div className="text-xs text-gray-400">
+          <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
             {t('usedSpace')}
           </div>
         </div>
@@ -298,11 +316,13 @@ export default function DataRecordingControls({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 记录配置 */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">{t('recordingConfig')}</h3>
+          <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('recordingConfig')}
+          </h3>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 <Clock className="w-4 h-4 inline mr-1" />
                 {t('samplingFrequency')} (Hz)
               </label>
@@ -314,14 +334,22 @@ export default function DataRecordingControls({
                   min="0.01"
                   max="100"
                   step="0.1"
-                  className="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                    isDarkMode 
+                      ? 'bg-gray-700 border-gray-600 text-white' 
+                      : 'bg-white border-gray-300 text-gray-900'
+                  }`}
                   placeholder={language === 'zh' ? '输入频率' : 'Enter frequency'}
                 />
-                <div className="flex items-center px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-300">
+                <div className={`flex items-center px-3 py-2 border rounded-lg ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-gray-300' 
+                    : 'bg-gray-100 border-gray-300 text-gray-700'
+                }`}>
                   Hz
                 </div>
               </div>
-              <div className="text-xs text-gray-400 mt-1">
+              <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                 {language === 'zh' ? '当前' : 'Current'}: {currentFrequency} Hz ({language === 'zh' ? '每' : 'every'} {recordingConfig.interval.toFixed(1)} {language === 'zh' ? '秒采集一次' : 'seconds'})
               </div>
               <div className="flex gap-1 mt-2">
@@ -332,7 +360,11 @@ export default function DataRecordingControls({
                       setCustomFrequency(freq.toString());
                       handleFrequencyChange(freq);
                     }}
-                    className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded transition-colors"
+                    className={`px-2 py-1 text-xs rounded transition-colors text-white ${
+                      isDarkMode 
+                        ? 'bg-gray-600 hover:bg-gray-500' 
+                        : 'bg-gray-500 hover:bg-gray-600'
+                    }`}
                   >
                     {freq}Hz
                   </button>
@@ -341,7 +373,7 @@ export default function DataRecordingControls({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-3">
+              <label className={`block text-sm font-medium mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('channelSelection')}
               </label>
               <div className="grid grid-cols-4 gap-2">
@@ -352,7 +384,7 @@ export default function DataRecordingControls({
                     className={`p-2 rounded-lg border transition-colors ${
                       selected
                         ? 'bg-purple-600 border-purple-500 text-white'
-                        : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'
+                        : isDarkMode ? 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     Ch {index + 1}
@@ -365,11 +397,13 @@ export default function DataRecordingControls({
 
         {/* 数据导出与管理 */}
         <div>
-          <h3 className="text-lg font-semibold text-white mb-4">{t('dataExportAndManagement')}</h3>
+          <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('dataExportAndManagement')}
+          </h3>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-gray-300">{t('autoExport')}</span>
+              <span className={isDarkMode ? 'text-gray-300' : 'text-gray-700'}>{t('autoExport')}</span>
               <button
                 onClick={handleAutoSaveToggle}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -385,14 +419,18 @@ export default function DataRecordingControls({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
+              <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                 {t('autoExportInterval')} ({t('minutes')})
               </label>
               <select
                 value={storageConfig.autoSaveInterval}
                 onChange={(e) => handleAutoSaveIntervalChange(parseInt(e.target.value))}
                 disabled={!storageConfig.autoSaveEnabled}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 ${
+                  isDarkMode 
+                    ? 'bg-gray-700 border-gray-600 text-white' 
+                    : 'bg-white border-gray-300 text-gray-900'
+                }`}
               >
                 <option value={1}>1{language === 'zh' ? '分钟' : ' minute'}</option>
                 <option value={5}>5{language === 'zh' ? '分钟' : ' minutes'}</option>
@@ -403,18 +441,20 @@ export default function DataRecordingControls({
               </select>
             </div>
 
-            <div className="text-xs text-gray-400">
+            <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {t('lastExportTime')}: {formatLastSaveTime()}
             </div>
 
             {/* 导出状态信息 */}
             {storageConfig.totalSavedReadings > 0 && (
-              <div className="p-3 bg-gray-700 rounded-lg">
-                <div className="text-sm text-gray-300 mb-1">{language === 'zh' ? '最后导出信息:' : 'Last export info:'}:</div>
-                <div className="text-xs text-gray-400">
+              <div className={`p-3 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+                <div className={`text-sm mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {language === 'zh' ? '最后导出信息:' : 'Last export info:'}:
+                </div>
+                <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {language === 'zh' ? '数据量' : 'Data count'}: {storageConfig.totalSavedReadings.toLocaleString()} {t('records')}
                 </div>
-                <div className="text-xs text-gray-400">
+                <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {language === 'zh' ? '导出时间' : 'Export time'}: {formatLastSaveTime()}
                 </div>
               </div>
@@ -424,7 +464,11 @@ export default function DataRecordingControls({
               <button
                 onClick={handleManualSave}
                 disabled={totalReadings === 0}
-                className="flex items-center gap-2 w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg font-medium transition-colors text-white disabled:cursor-not-allowed ${
+                  totalReadings === 0
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-emerald-500 hover:bg-emerald-600'
+                }`}
               >
                 <Download className="w-4 h-4" />
                 {t('exportCSVNow')}
@@ -433,7 +477,11 @@ export default function DataRecordingControls({
               <button
                 onClick={handleLoadSavedData}
                 disabled={savedStats.count === 0}
-                className="flex items-center gap-2 w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg font-medium transition-colors text-white disabled:cursor-not-allowed ${
+                  savedStats.count === 0
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-500 hover:bg-indigo-600'
+                }`}
               >
                 <FileText className="w-4 h-4" />
                 {t('loadLocalData')}
@@ -442,7 +490,11 @@ export default function DataRecordingControls({
               <button
                 onClick={handleClearSavedData}
                 disabled={localStorageUsage === '0 KB' || recordingConfig.isRecording}
-                className="flex items-center gap-2 w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors"
+                className={`flex items-center gap-2 w-full px-4 py-2 rounded-lg font-medium transition-colors text-white disabled:cursor-not-allowed ${
+                  localStorageUsage === '0 KB' || recordingConfig.isRecording
+                    ? isDarkMode ? 'bg-gray-600' : 'bg-gray-400'
+                    : isDarkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'
+                }`}
                 title={recordingConfig.isRecording ? (language === 'zh' ? '请先停止记录' : 'Please stop recording first') : ''}
               >
                 <Trash2 className="w-4 h-4" />

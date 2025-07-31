@@ -7,9 +7,10 @@ interface TestModeControlsProps {
   config: TestModeConfig;
   onConfigChange: (config: TestModeConfig) => void;
   language: 'zh' | 'en';
+  isDarkMode: boolean;
 }
 
-export default function TestModeControls({ config, onConfigChange, language }: TestModeControlsProps) {
+export default function TestModeControls({ config, onConfigChange, language, isDarkMode }: TestModeControlsProps) {
   const { t } = useTranslation(language);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -107,15 +108,23 @@ export default function TestModeControls({ config, onConfigChange, language }: T
   };
 
   return (
-    <div className="bg-gradient-to-r from-purple-800 to-indigo-800 rounded-lg p-4 border border-purple-600 shadow-md">
+    <div className={`rounded-lg p-4 border shadow-md ${
+      isDarkMode 
+        ? 'bg-gradient-to-r from-purple-800 to-indigo-800 border-purple-600' 
+        : 'bg-gradient-to-r from-purple-100 to-indigo-100 border-purple-300'
+    }`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-purple-600 rounded-lg">
             <TestTube className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">{t('testMode')}</h2>
-            <p className="text-purple-200 text-xs">{t('simulatedDataGeneration')}</p>
+            <h2 className={`text-lg font-bold ${
+              isDarkMode ? 'text-white' : 'text-gray-900'
+            }`}>{t('testMode')}</h2>
+            <p className={`text-xs ${
+              isDarkMode ? 'text-purple-200' : 'text-purple-700'
+            }`}>{t('simulatedDataGeneration')}</p>
           </div>
         </div>
         
@@ -123,14 +132,18 @@ export default function TestModeControls({ config, onConfigChange, language }: T
           <div className={`px-2 py-1 rounded-full text-xs font-medium ${
             config.enabled 
               ? 'bg-green-900 text-green-300 border border-green-700'
-              : 'bg-gray-700 text-gray-300 border border-gray-600'
+             : isDarkMode ? 'bg-gray-700 text-gray-300 border border-gray-600' : 'bg-gray-200 text-gray-700 border border-gray-400'
           }`}>
             {config.enabled ? t('active') : t('inactive')}
           </div>
           
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1 px-3 py-1 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm transition-colors"
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-sm transition-colors text-white ${
+              isDarkMode 
+                ? 'bg-purple-700 hover:bg-purple-600' 
+                : 'bg-purple-600 hover:bg-purple-700'
+            }`}
           >
             <Settings className="w-3 h-3" />
             {showAdvanced ? (language === 'zh' ? '隐藏' : 'Hide') : t('settings')}
@@ -153,12 +166,20 @@ export default function TestModeControls({ config, onConfigChange, language }: T
 
       {/* Validation Errors */}
       {validationErrors.length > 0 && (
-        <div className="mt-3 p-3 bg-red-900 border border-red-700 rounded-lg">
+        <div className={`mt-3 p-3 border rounded-lg ${
+          isDarkMode 
+            ? 'bg-red-900 border-red-700' 
+            : 'bg-red-50 border-red-200'
+        }`}>
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="w-4 h-4 text-red-400" />
-            <span className="text-red-300 font-medium text-sm">{t('configurationErrors')}</span>
+            <span className={`font-medium text-sm ${
+              isDarkMode ? 'text-red-300' : 'text-red-700'
+            }`}>{t('configurationErrors')}</span>
           </div>
-          <ul className="text-red-300 text-xs space-y-1">
+          <ul className={`text-xs space-y-1 ${
+            isDarkMode ? 'text-red-300' : 'text-red-700'
+          }`}>
             {validationErrors.map((error, index) => (
               <li key={index}>• {error}</li>
             ))}
@@ -168,15 +189,23 @@ export default function TestModeControls({ config, onConfigChange, language }: T
 
       {/* Advanced Settings */}
       {showAdvanced && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4 pt-4 border-t border-purple-600">
+        <div className={`grid grid-cols-1 md:grid-cols-4 gap-3 mt-4 pt-4 border-t ${
+          isDarkMode ? 'border-purple-600' : 'border-purple-300'
+        }`}>
           <div>
-            <label className="block text-xs font-medium text-purple-200 mb-1">
+            <label className={`block text-xs font-medium mb-1 ${
+              isDarkMode ? 'text-purple-200' : 'text-purple-700'
+            }`}>
               {t('generationRate')} (Hz)
             </label>
             <select
               value={config.dataGenerationRate}
               onChange={(e) => handleConfigChange('dataGenerationRate', parseFloat(e.target.value))}
-              className="w-full px-2 py-1 text-sm bg-purple-700 border border-purple-600 rounded text-white focus:ring-1 focus:ring-purple-400"
+              className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-purple-400 ${
+                isDarkMode 
+                  ? 'bg-purple-700 border-purple-600 text-white' 
+                  : 'bg-white border-purple-300 text-gray-900'
+              }`}
             >
               <option value={0.1}>0.1 Hz</option>
               <option value={0.5}>0.5 Hz</option>
@@ -187,14 +216,20 @@ export default function TestModeControls({ config, onConfigChange, language }: T
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-purple-200 mb-1">
+            <label className={`block text-xs font-medium mb-1 ${
+              isDarkMode ? 'text-purple-200' : 'text-purple-700'
+            }`}>
               {t('minTemperature')} (°C)
             </label>
             <input
               type="number"
               value={config.temperatureRange.min}
               onChange={(e) => handleRangeChange('min', parseFloat(e.target.value))}
-              className="w-full px-2 py-1 text-sm bg-purple-700 border border-purple-600 rounded text-white focus:ring-1 focus:ring-purple-400"
+              className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-purple-400 ${
+                isDarkMode 
+                  ? 'bg-purple-700 border-purple-600 text-white' 
+                  : 'bg-white border-purple-300 text-gray-900'
+              }`}
               min={-50}
               max={200}
               step={0.1}
@@ -202,14 +237,20 @@ export default function TestModeControls({ config, onConfigChange, language }: T
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-purple-200 mb-1">
+            <label className={`block text-xs font-medium mb-1 ${
+              isDarkMode ? 'text-purple-200' : 'text-purple-700'
+            }`}>
               {t('maxTemperature')} (°C)
             </label>
             <input
               type="number"
               value={config.temperatureRange.max}
               onChange={(e) => handleRangeChange('max', parseFloat(e.target.value))}
-              className="w-full px-2 py-1 text-sm bg-purple-700 border border-purple-600 rounded text-white focus:ring-1 focus:ring-purple-400"
+              className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-purple-400 ${
+                isDarkMode 
+                  ? 'bg-purple-700 border-purple-600 text-white' 
+                  : 'bg-white border-purple-300 text-gray-900'
+              }`}
               min={-50}
               max={200}
               step={0.1}
@@ -217,7 +258,9 @@ export default function TestModeControls({ config, onConfigChange, language }: T
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-purple-200 mb-1">
+            <label className={`block text-xs font-medium mb-1 ${
+              isDarkMode ? 'text-purple-200' : 'text-purple-700'
+            }`}>
               {t('noiseLevel')}: {(config.noiseLevel * 100).toFixed(0)}%
             </label>
             <input
@@ -227,14 +270,22 @@ export default function TestModeControls({ config, onConfigChange, language }: T
               step="0.1"
               value={config.noiseLevel}
               onChange={(e) => handleConfigChange('noiseLevel', parseFloat(e.target.value))}
-              className="w-full h-1 bg-purple-700 rounded appearance-none cursor-pointer"
+              className={`w-full h-1 rounded appearance-none cursor-pointer ${
+                isDarkMode 
+                  ? 'bg-purple-700' 
+                  : 'bg-purple-300'
+              }`}
             />
           </div>
 
           <div className="md:col-span-4 flex justify-end">
             <button
               onClick={resetToDefaults}
-              className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded text-sm transition-colors"
+              className={`px-3 py-1 rounded text-sm transition-colors text-white ${
+                isDarkMode 
+                  ? 'bg-purple-600 hover:bg-purple-500' 
+                  : 'bg-purple-500 hover:bg-purple-600'
+              }`}
             >
               {t('resetToDefaults')}
             </button>
@@ -244,8 +295,12 @@ export default function TestModeControls({ config, onConfigChange, language }: T
 
       {/* Current Configuration Summary */}
       {config.enabled && (
-        <div className="mt-3 p-2 bg-purple-900 rounded-lg">
-          <div className="text-purple-200 text-xs">
+        <div className={`mt-3 p-2 rounded-lg ${
+          isDarkMode ? 'bg-purple-900' : 'bg-purple-100'
+        }`}>
+          <div className={`text-xs ${
+            isDarkMode ? 'text-purple-200' : 'text-purple-700'
+          }`}>
             <span className="font-medium">{t('activeConfiguration')}:</span> {' '}
             {config.dataGenerationRate} Hz, {config.temperatureRange.min}°C {language === 'zh' ? '到' : 'to'} {config.temperatureRange.max}°C, {(config.noiseLevel * 100).toFixed(0)}% {language === 'zh' ? '噪声' : 'noise'}
           </div>

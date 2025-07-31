@@ -602,10 +602,6 @@ return registerValue * 0.1;`,
     ? 'bg-gray-900 text-white' 
     : 'bg-gray-50 text-gray-900';
 
-  const cardClasses = isDarkMode 
-    ? 'bg-gray-800 border-gray-700' 
-    : 'bg-white border-gray-200';
-
   const headerClasses = isDarkMode 
     ? 'bg-gradient-to-r from-gray-800 to-gray-700 border-gray-600' 
     : 'bg-gradient-to-r from-gray-100 to-gray-200 border-gray-300';
@@ -767,6 +763,7 @@ return registerValue * 0.1;`,
               channels={channels}
               language={language.current}
               onHoverDataChange={setChartHoverData}
+              isDarkMode={isDarkMode}
             />
           </div>
           <div>
@@ -775,6 +772,7 @@ return registerValue * 0.1;`,
               channels={channels}
               language={language.current}
               hoverTemperatures={chartHoverData}
+              isDarkMode={isDarkMode}
             />
           </div>
         </div>
@@ -785,6 +783,7 @@ return registerValue * 0.1;`,
           onChannelToggle={handleChannelToggle}
           language={language.current}
           maxChannels={serialConfig.registerCount}
+          isDarkMode={isDarkMode}
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -794,6 +793,7 @@ return registerValue * 0.1;`,
             onImportData={handleImportData}
             language={language.current}
             hasCalibrationData={hasCalibrationData}
+            isDarkMode={isDarkMode}
           />
           
           <div className="lg:col-span-2">
@@ -808,6 +808,7 @@ return registerValue * 0.1;`,
               onImportData={handleImportData}
               onClearSavedData={handleClearSavedData}
               language={language.current}
+              isDarkMode={isDarkMode}  // 添加这一行
             />
           </div>
         </div>
@@ -819,6 +820,7 @@ return registerValue * 0.1;`,
           language={language.current}
           maxChannels={serialConfig.registerCount}
           currentReadings={getCurrentReadingsForCalibration()}
+          isDarkMode={isDarkMode}
         />
 
         <SerialModbusConfiguration
@@ -829,24 +831,28 @@ return registerValue * 0.1;`,
           onDisconnect={handleDisconnect}
           language={language.current}
           sessionActive={sessionActive}
+          isDarkMode={isDarkMode}
         />
 
         <RawDataDisplay
           rawDataReadings={rawDataReadings}
           language={language.current}
           onClearRawData={handleClearRawData}
+          isDarkMode={isDarkMode}
         />
 
         <TemperatureConversionConfig
           config={temperatureConversionConfig}
           onConfigChange={setTemperatureConversionConfig}
           language={language.current}
+          isDarkMode={isDarkMode}
         />
 
         <TestModeControls
           config={testModeConfig}
           onConfigChange={handleTestModeToggle}
           language={language.current}
+          isDarkMode={isDarkMode}
         />
       </main>
 
